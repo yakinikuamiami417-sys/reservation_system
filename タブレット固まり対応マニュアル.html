@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>タブレット固まり対応マニュアル</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+    background: #f0f0f0;
+    padding: 20px;
+    color: #222;
+  }
+
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    background: #fff;
+    padding: 14mm 14mm 12mm 14mm;
+    box-shadow: 0 4px 20px rgba(0,0,0,.15);
+  }
+
+  /* ===== ヘッダー ===== */
+  .page-header {
+    background: linear-gradient(135deg, #b71c1c 0%, #d32f2f 100%);
+    color: #fff;
+    border-radius: 10px;
+    padding: 12px 18px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .header-icon {
+    font-size: 2.4rem;
+    line-height: 1;
+  }
+  .header-text h1 {
+    font-size: 1.35rem;
+    font-weight: 900;
+    letter-spacing: .04em;
+  }
+  .header-text p {
+    font-size: .78rem;
+    opacity: .88;
+    margin-top: 2px;
+  }
+  .store-name {
+    margin-left: auto;
+    font-size: .78rem;
+    opacity: .85;
+    white-space: nowrap;
+    text-align: right;
+    line-height: 1.6;
+  }
+
+  /* ===== まず確認 ===== */
+  .check-first {
+    background: #fff8e1;
+    border: 2px solid #f9a825;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .check-first .icon { font-size: 1.6rem; line-height: 1; margin-top: 2px; }
+  .check-first h2 { font-size: .9rem; font-weight: 800; color: #e65100; margin-bottom: 4px; }
+  .check-first p  { font-size: .82rem; line-height: 1.6; color: #333; }
+
+  /* ===== ステップ共通 ===== */
+  .step-section {
+    margin-bottom: 12px;
+  }
+  .step-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .step-num {
+    background: #b71c1c;
+    color: #fff;
+    font-size: .72rem;
+    font-weight: 900;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-title {
+    font-size: 1rem;
+    font-weight: 800;
+    color: #b71c1c;
+  }
+  .step-sub {
+    font-size: .7rem;
+    color: #777;
+    margin-left: 2px;
+  }
+
+  .step-card {
+    border: 1.5px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .step-card .card-inner {
+    padding: 10px 14px;
+  }
+
+  /* アクションボックス */
+  .action-box {
+    background: #fafafa;
+    border-left: 4px solid #b71c1c;
+    padding: 8px 12px;
+    border-radius: 0 6px 6px 0;
+    margin-bottom: 8px;
+  }
+  .action-box .action-title {
+    font-size: .82rem;
+    font-weight: 800;
+    color: #b71c1c;
+    margin-bottom: 3px;
+  }
+  .action-box ol, .action-box ul {
+    padding-left: 1.2em;
+    font-size: .82rem;
+    line-height: 1.8;
+    color: #333;
+  }
+  .action-box .note {
+    font-size: .72rem;
+    color: #888;
+    margin-top: 4px;
+  }
+
+  /* 結果バッジ */
+  .result-ok {
+    display: inline-block;
+    background: #e8f5e9;
+    color: #2e7d32;
+    border: 1.5px solid #66bb6a;
+    border-radius: 20px;
+    font-size: .72rem;
+    font-weight: 700;
+    padding: 2px 10px;
+    margin-top: 5px;
+  }
+  .result-ng {
+    display: inline-block;
+    background: #fce4ec;
+    color: #c62828;
+    border: 1.5px solid #ef9a9a;
+    border-radius: 20px;
+    font-size: .72rem;
+    font-weight: 700;
+    padding: 2px 10px;
+    margin-top: 5px;
+  }
+
+  /* 分岐矢印 */
+  .branch {
+    display: flex;
+    gap: 10px;
+    margin: 6px 0;
+  }
+  .branch-item {
+    flex: 1;
+    border-radius: 7px;
+    padding: 8px 10px;
+    font-size: .78rem;
+    line-height: 1.55;
+  }
+  .branch-item.ok  { background: #e8f5e9; border: 1.5px solid #66bb6a; }
+  .branch-item.ng  { background: #fce4ec; border: 1.5px solid #ef9a9a; }
+  .branch-item .branch-head { font-weight: 800; margin-bottom: 3px; font-size: .8rem; }
+  .branch-item.ok .branch-head { color: #2e7d32; }
+  .branch-item.ng .branch-head { color: #c62828; }
+
+  /* PC操作ステップ */
+  .pc-step {
+    background: #e3f2fd;
+    border: 1.5px solid #90caf9;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+  }
+  .pc-step h3 {
+    font-size: .85rem;
+    font-weight: 800;
+    color: #1565c0;
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .pc-step ol {
+    padding-left: 1.3em;
+    font-size: .82rem;
+    line-height: 1.9;
+    color: #1a237e;
+  }
+  .pc-step .filename {
+    display: inline-block;
+    background: #1565c0;
+    color: #fff;
+    font-size: .72rem;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 4px;
+    letter-spacing: .02em;
+  }
+
+  /* 黒画面チェック */
+  .cmd-check {
+    background: #212121;
+    color: #e0e0e0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: 'Courier New', monospace;
+    font-size: .72rem;
+    line-height: 1.7;
+    margin: 6px 0;
+  }
+  .cmd-check .ok-text  { color: #69f0ae; font-weight: 700; }
+  .cmd-check .err-text { color: #ff5252; font-weight: 700; }
+  .cmd-check .dim      { color: #757575; }
+
+  /* 連絡先 */
+  .contact-box {
+    background: #f3e5f5;
+    border: 2px solid #ce93d8;
+    border-radius: 8px;
+    padding: 9px 14px;
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .contact-box .icon { font-size: 1.6rem; }
+  .contact-box p { font-size: .8rem; line-height: 1.7; color: #333; }
+  .contact-box strong { color: #6a1b9a; }
+
+  /* ===== フッター ===== */
+  .page-footer {
+    margin-top: 12px;
+    text-align: center;
+    font-size: .65rem;
+    color: #bbb;
+    border-top: 1px solid #eee;
+    padding-top: 6px;
+  }
+
+  /* ===== 印刷設定 ===== */
+  @media print {
+    body { background: none; padding: 0; }
+    .page {
+      width: 100%;
+      min-height: auto;
+      padding: 10mm 12mm;
+      box-shadow: none;
+    }
+    .print-btn { display: none; }
+  }
+
+  /* 印刷ボタン */
+  .print-btn {
+    display: block;
+    width: 210mm;
+    margin: 16px auto 0;
+    padding: 10px;
+    background: #b71c1c;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: .9rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: center;
+  }
+  .print-btn:hover { background: #d32f2f; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ヘッダー -->
+  <div class="page-header">
+    <div class="header-icon">📱</div>
+    <div class="header-text">
+      <h1>タブレット予約台帳　固まり対応マニュアル</h1>
+      <p>画面が動かなくなったときは、このマニュアルの順番に試してください</p>
+    </div>
+    <div class="store-name">焼肉 キリン屋<br>スタッフ用</div>
+  </div>
+
+  <!-- まず確認 -->
+  <div class="check-first">
+    <div class="icon">👀</div>
+    <div>
+      <h2>まず画面を確認してください</h2>
+      <p>
+        「<strong>接続できません</strong>」「<strong>サイトに到達できません</strong>」と表示されている
+        &nbsp;→&nbsp; <strong>STEP 3</strong> へ（PCのサーバーが止まっています）<br>
+        画面は出ているが<strong>タップしても反応しない・くるくる止まらない</strong>
+        &nbsp;→&nbsp; <strong>STEP 1</strong> から順番に試してください
+      </p>
+    </div>
+  </div>
+
+  <!-- STEP 1 -->
+  <div class="step-section">
+    <div class="step-label">
+      <div class="step-num">1</div>
+      <div class="step-title">画面を更新する　<span class="step-sub">（これだけで直ることがほとんどです）</span></div>
+    </div>
+    <div class="step-card">
+      <div class="card-inner">
+        <div class="action-box">
+          <div class="action-title">タブレットでの操作</div>
+          <ol>
+            <li>画面を<strong>上から下に引っ張って</strong>離す（Safari / Chrome 共通）</li>
+            <li>または、ブラウザ上部の <strong>⟳ 更新ボタン</strong> をタップする</li>
+          </ol>
+          <p class="note">※ 少し待ってから予約一覧が表示されれば完了です</p>
+        </div>
+        <span class="result-ok">✔ 直った　→　そのまま使ってください</span>
+        &nbsp;
+        <span class="result-ng">✘ まだ固まっている　→　STEP 2 へ</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step-section">
+    <div class="step-label">
+      <div class="step-num">2</div>
+      <div class="step-title">タブを閉じて開き直す・Wi-Fiを確認する</div>
+    </div>
+    <div class="step-card">
+      <div class="card-inner">
+        <div class="branch">
+          <div class="branch-item ok">
+            <div class="branch-head">A) タブを閉じて再度開く</div>
+            <ol style="padding-left:1.2em; font-size:.78rem; line-height:1.7">
+              <li>ブラウザのタブを<strong>完全に閉じる</strong></li>
+              <li>ブラウザを再度開いて<br>アドレス欄に以下を入力<br>
+                <strong style="font-size:.85rem; letter-spacing:.03em">192.168.0.5:5000</strong>
+              </li>
+              <li>予約台帳が表示されれば完了</li>
+            </ol>
+          </div>
+          <div class="branch-item ng">
+            <div class="branch-head">B) Wi-Fi接続を確認する</div>
+            <ol style="padding-left:1.2em; font-size:.78rem; line-height:1.7">
+              <li>タブレットの<strong>設定</strong>を開く</li>
+              <li><strong>Wi-Fi</strong> をタップ</li>
+              <li>店のWi-Fiに繋がっているか確認</li>
+              <li>繋がっていなければタップして接続し、<strong>A</strong>の手順でアクセス</li>
+            </ol>
+          </div>
+        </div>
+        <span class="result-ok">✔ 直った　→　そのまま使ってください</span>
+        &nbsp;
+        <span class="result-ng">✘ まだ直らない　→　STEP 3 へ（PCの確認が必要）</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step-section">
+    <div class="step-label">
+      <div class="step-num">3</div>
+      <div class="step-title">PCのサーバーを再起動する</div>
+    </div>
+    <div class="step-card">
+      <div class="card-inner">
+
+        <div class="pc-step">
+          <h3>💻 レジ横のPCで操作します</h3>
+          <ol>
+            <li>デスクトップ（またはタスクバー）の
+              <span class="filename">予約システム起動.bat</span>
+              をダブルクリック
+            </li>
+            <li>黒い画面（コマンドプロンプト）が開く</li>
+            <li>以下のように表示されたら起動成功</li>
+          </ol>
+        </div>
+
+        <div class="cmd-check">
+          <span class="dim">バックアップ完了: backup\reservations_20260530.db</span><br>
+          予約システムを起動中...<br>
+          iPadからは http://192.168.0.5:5000 でアクセスしてください<br>
+          <span class="ok-text"> * Running on http://0.0.0.0:5000</span><br>
+          <span class="ok-text"> * Press CTRL+C to quit</span>
+        </div>
+
+        <div class="action-box" style="margin-top:8px">
+          <div class="action-title">起動後にタブレットで操作</div>
+          <ol>
+            <li>タブレットのブラウザで <strong>192.168.0.5:5000</strong> を開く</li>
+            <li>予約台帳が表示されれば完了</li>
+          </ol>
+        </div>
+
+        <span class="result-ok">✔ 直った　→　そのまま使ってください</span>
+        &nbsp;
+        <span class="result-ng">✘ まだ直らない　→　STEP 4 へ</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="step-section">
+    <div class="step-label">
+      <div class="step-num">4</div>
+      <div class="step-title">黒い画面がすでに開いているのに動かない場合</div>
+    </div>
+    <div class="step-card">
+      <div class="card-inner">
+        <div class="action-box">
+          <div class="action-title">PCの黒い画面（コマンドプロンプト）を確認</div>
+          <ol>
+            <li>黒い画面をクリックして選択する</li>
+            <li>キーボードの <strong>Ctrl</strong> を押しながら <strong>C</strong> を押す（強制停止）</li>
+            <li>黒い画面が閉じたら、<span class="filename">予約システム起動.bat</span> をもう一度ダブルクリック</li>
+            <li>タブレットでリロードして確認</li>
+          </ol>
+        </div>
+        <span class="result-ok">✔ 直った　→　そのまま使ってください</span>
+        &nbsp;
+        <span class="result-ng">✘ まだ直らない　→　下の連絡先に連絡してください</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 連絡先 -->
+  <div class="contact-box">
+    <div class="icon">📞</div>
+    <p>
+      ここまで試しても直らないときは、無理に操作せず<strong>オーナーに連絡</strong>してください。<br>
+      予約の受付は引き続き<strong>紙の予約台帳</strong>で対応してください。
+    </p>
+  </div>
+
+  <!-- フッター -->
+  <div class="page-footer">
+    キリン屋 予約管理システム 対応マニュアル　|　レジ横・ホール入口に掲示
+  </div>
+
+</div><!-- /page -->
+
+<button class="print-btn" onclick="window.print()">
+  印刷する（Ctrl + P）
+</button>
+
+</body>
+</html>

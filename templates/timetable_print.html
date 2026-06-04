@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>印刷 {{ date_display }}</title>
+  <style>
+    :root { --red:#8B1A1A; --dark:#1a1a1a; }
+    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:'Segoe UI','Hiragino Kaku Gothic ProN',sans-serif; background:#fff; color:#1a1a1a; }
+
+    /* ── 画面コントロールバー ── */
+    .ctrl {
+      display:flex; align-items:center; gap:12px;
+      padding:10px 16px; background:#f7f4f0;
+      border-bottom:2px solid var(--red);
+      position:sticky; top:0; z-index:100;
+    }
+    .ctrl strong { color:var(--red); font-size:.95rem; }
+    .btn-p { background:var(--red); color:#fff; border:none; padding:7px 18px; border-radius:6px; cursor:pointer; font-size:.85rem; font-weight:700; }
+    .btn-c { background:#555;      color:#fff; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:.85rem; }
+    @media print { .ctrl { display:none !important; } }
+
+    /* ── ページセクション ── */
+    .wrap { padding:8mm; }
+    .section { margin-bottom:0; }
+    @media print {
+      @page { size:A4 landscape; margin:8mm; }
+      .section { page-break-after:always; }
+      .section:last-child { page-break-after:auto; }
+    }
+    .sec-title {
+      font-size:.88rem; font-weight:800; margin-bottom:5px;
+      padding-bottom:3px; border-bottom:2.5px solid var(--red);
+      display:flex; justify-content:space-between; align-items:baseline;
+    }
+    .sec-sub { font-size:.7rem; font-weight:400; color:#888; }
+
+    /* ══════════════════════════
+       タイムテーブル
+    ══════════════════════════ */
+    .tt { display:flex; border:1.5px solid #dee2e6; border-radius:8px; overflow:hidden; background:#fff; }
+
+    .tt-axis { width:44px; min-width:44px; flex-shrink:0;
+               border-right:2px solid #dee2e6; background:#f8f9fa; }
+    .tt-axis-head {
+      height:40px; display:flex; align-items:center; justify-content:center;
+      font-size:.6rem; font-weight:700; background:var(--dark); color:#aaa;
+      border-bottom:2px solid #dee2e6;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    .tt-axis-body { position:relative; }
+    .tt-tlabel     { position:absolute; right:5px; font-size:.62rem; color:#999; transform:translateY(-50%); white-space:nowrap; }
+    .tt-tlabel.maj { color:#444; font-weight:700; font-size:.65rem; }
+    .tt-axis-tab   { position:absolute; left:0; width:4px; height:12px;
+                     transform:translateY(-50%); border-radius:0 2px 2px 0;
+                     -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+    .tt-cols { flex:1; overflow:hidden; }
+    .tt-hdr-row { display:flex; border-bottom:2px solid var(--red); }
+    .tt-colhead {
+      flex:0 0 auto; text-align:center; padding:4px 2px;
+      font-size:.68rem; font-weight:700;
+      background:var(--dark); color:#fff;
+      border-right:1px solid #333;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    .tt-colhead-cap { font-size:.56rem; opacity:.65; font-weight:400; }
+    .tt-body { position:relative; overflow:hidden; }
+
+    .tt-gl     { position:absolute; left:0; right:0; height:0; border-top:1px dashed #ececec; z-index:1; }
+    .tt-gl.maj { border-top:1px solid #d4d4d4; }
+    .tt-vcol   { position:absolute; top:0; width:0; border-left:1px solid #e2e2e2; z-index:1; }
+
+    .tt-mline  { position:absolute; left:0; right:0; height:0; z-index:8; }
+    .tt-mbadge {
+      position:absolute; left:2px; font-size:.54rem; font-weight:700;
+      padding:1px 5px; border-radius:2px; color:#fff; white-space:nowrap; line-height:1.4;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+
+    .tt-blk {
+      position:absolute; border-radius:5px; padding:4px 5px;
+      font-size:.72rem; overflow:hidden; z-index:5;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    .tt-blk.r1 { background:#3a52d4; color:#fff; border-left:3px solid #1f35a8; }
+    .tt-blk.r2 { background:#18a89c; color:#fff; border-left:3px solid #0e7a72; }
+    .tt-blk.r3 { background:#d42838; color:#fff; border-left:3px solid #a01020; }
+    .blk-name  { font-size:.76rem; font-weight:800; line-height:1.25;
+                 overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+                 text-shadow:0 0 4px rgba(0,0,0,.25); }
+    .blk-info  { font-size:.66rem; font-weight:600; line-height:1.25; opacity:.95;
+                 overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+                 text-shadow:0 0 3px rgba(0,0,0,.2); }
+    .blk-note  { font-size:.58rem; opacity:.85; line-height:1.2;
+                 overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+                 border-top:1px solid rgba(255,255,255,.3); margin-top:2px; padding-top:1px; }
+
+    /* ══════════════════════════
+       回転サマリー
+    ══════════════════════════ */
+    .warn-box {
+      margin-bottom:8px; padding:6px 10px;
+      border:1.5px solid #e63946; border-radius:6px;
+      background:#fff5f5; font-size:.74rem;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    .sum-tbl { width:100%; border-collapse:collapse; font-size:.76rem; }
+    .sum-tbl th, .sum-tbl td { border:1px solid #dee2e6; padding:4px 6px; }
+    .sum-tbl thead th {
+      background:var(--dark); color:#fff; text-align:center;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    .sum-tbl .note-cell { background:#fafff8; }
+
+    /* ── ディナー手書き記入欄 ── */
+    .walkin-block {
+      margin-top:10px;
+      page-break-inside: avoid;   /* サマリーが長い時は自動的に次ページへ */
+      break-inside: avoid;
+    }
+    .walkin-head {
+      font-size:.78rem; font-weight:700; padding:3px 8px;
+      background:#1a1a1a; color:#fff;
+      border-radius:4px 4px 0 0;
+      display:flex; justify-content:space-between; align-items:center;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    .walkin-head span { font-size:.65rem; font-weight:400; opacity:.75; }
+    .walkin-tbl { width:100%; border-collapse:collapse; font-size:.72rem; }
+    .walkin-tbl th {
+      border:1px solid #bbb; padding:4px 5px;
+      background:#444; color:#fff; text-align:center;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    .walkin-tbl td  { border:1px solid #ccc; height:23px; padding:0 4px; }
+    .walkin-tbl .nc { text-align:center; color:#ccc; font-size:.65rem; background:#fafafa;
+                      -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  </style>
+</head>
+<body>
+
+<div class="ctrl">
+  <strong>🍖 キリン屋 印刷プレビュー ── {{ date_display }}</strong>
+  <button class="btn-p" onclick="window.print()">🖨️ 印刷する</button>
+  <button class="btn-c" onclick="window.close()">✕ 閉じる</button>
+</div>
+
+<div class="wrap">
+
+{# ══════════════════════════════════════
+   マクロ: タイムテーブル描画
+   ══════════════════════════════════════ #}
+{% macro draw_tt(height, labels, grid, markers, tdata) %}
+<div class="tt" style="width:{{ 44 + tables|length * col_w }}px">
+  <div class="tt-axis" style="height:{{ height + 40 }}px">
+    <div class="tt-axis-head">時刻</div>
+    <div class="tt-axis-body" style="height:{{ height }}px">
+      {% for lbl in labels %}
+      <div class="tt-tlabel {{ 'maj' if lbl.is_hour else '' }}" style="top:{{ lbl.top_px }}px">{{ lbl.label }}</div>
+      {% endfor %}
+      {% for sm in markers %}
+      <div class="tt-axis-tab" style="top:{{ sm.top_px }}px; background:{{ sm.color }}"></div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="tt-cols">
+    <div class="tt-hdr-row">
+      {% for t_id, info in tables.items() %}
+      <div class="tt-colhead" style="width:{{ col_w }}px">
+        <div>{{ t_id }}番</div>
+        <div class="tt-colhead-cap">{{ info.capacity }}席</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="tt-body" style="height:{{ height }}px; width:{{ tables|length * col_w }}px">
+      {% for gl in grid %}
+      <div class="tt-gl {{ 'maj' if gl.is_hour else '' }}" style="top:{{ gl.top_px }}px; width:{{ tables|length * col_w }}px"></div>
+      {% endfor %}
+      {% for i in range(1, tables|length) %}
+      <div class="tt-vcol" style="left:{{ i * col_w }}px; height:{{ height }}px"></div>
+      {% endfor %}
+      {% for sm in markers %}
+      <div class="tt-mline" style="top:{{ sm.top_px }}px; width:{{ tables|length * col_w }}px;
+                                   border-top:2.5px {{ 'dashed' if sm.dashed else 'solid' }} {{ sm.color }}">
+        <span class="tt-mbadge" style="background:{{ sm.color }}; {{ 'top:2px' if not sm.above else 'top:-11px' }}">{{ sm.label }}</span>
+      </div>
+      {% endfor %}
+      {% for t_id, info in tables.items() %}
+      {% set cl = loop.index0 * col_w %}
+      {% for res in tdata.get(t_id, []) %}
+      <div class="tt-blk r{{ res.rotation_num }}"
+           style="left:{{ cl + 2 }}px; top:{{ res.top_px }}px; height:{{ res.height_px }}px; width:{{ col_w - 5 }}px">
+        <div class="blk-name">{{ res.name }}</div>
+        <div class="blk-info">{{ res.total_people }}名　{{ res.time_slot }}〜</div>
+        {% if res.notes and res.height_px >= 56 %}
+        <div class="blk-note">📝 {{ res.notes[:18] }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+
+{# ═══════════════
+   ページ1: ランチ
+   ═══════════════ #}
+<div class="section">
+  <div class="sec-title">
+    {{ date_display }}　ランチ タイムテーブル
+    <span class="sec-sub">11:30 開店　13:30 LO　14:00 閉店</span>
+  </div>
+  {{ draw_tt(lunch_h, lunch_labels, lunch_grid, lunch_markers, lunch_tdata) }}
+</div>
+
+
+{# ═════════════════
+   ページ2: ディナー
+   ═════════════════ #}
+<div class="section" style="zoom:0.93">
+  <div class="sec-title">
+    {{ date_display }}　ディナー タイムテーブル
+    <span class="sec-sub">17:00 開店　22:00 LO　23:00 閉店</span>
+  </div>
+  {{ draw_tt(dinner_h, dinner_labels, dinner_grid, dinner_markers, dinner_tdata) }}
+</div>
+
+
+{# ══════════════════════════════════════════
+   ページ3: 回転サマリー ＋ ディナー手書き欄
+   ※ 手書き欄はサマリーが長い場合 自動的に次ページへ
+   ══════════════════════════════════════════ #}
+<div class="section">
+  <div class="sec-title">
+    {{ date_display }}　回転サマリー
+    <span class="sec-sub">合計 {{ reservations|length }}組 ／ {{ reservations|sum(attribute='total_people') }}名　最大 {{ max_groups }}組</span>
+  </div>
+
+  {% if warnings %}
+  <div class="warn-box">
+    <strong style="color:#e63946">⚠️ 回転注意</strong>
+    {% for w in warnings %}
+    <span style="margin-left:8px; font-size:.72rem">
+      {% if w.type == '3rd' %}<span style="background:#e63946;color:#fff;border-radius:3px;padding:0 4px;font-size:.65rem">3回転</span>
+      {% elif w.type == 'danger' %}🔴
+      {% else %}🟡{% endif %}
+      {{ w.msg }}
+    </span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# 回転サマリー表（予約分のみ） #}
+  <table class="sum-tbl">
+    <thead>
+      <tr>
+        <th style="width:7%">席</th>
+        <th style="width:5%">収容</th>
+        <th style="width:20%">1回転目</th>
+        <th style="width:20%">2回転目</th>
+        <th style="width:20%">3回転目</th>
+        <th style="width:8%">状態</th>
+        <th>備考・手書き</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t_id, info in tables.items() %}
+      {% set rots = table_data.get(t_id, []) %}
+      {% if rots %}
+      <tr {% if rots|selectattr('warn_3rd')|list %}style="background:#fff5f5"{% endif %}>
+        <td style="font-weight:800; text-align:center">{{ t_id }}番</td>
+        <td style="text-align:center; color:#888">{{ info.capacity }}</td>
+        {% for n in [1,2,3] %}
+        {% set rot = rots|selectattr('rotation_num','equalto',n)|list %}
+        <td>
+          {% if rot %}
+            <strong>{{ rot[0].name }}</strong>　{{ rot[0].total_people }}名<br>
+            <span style="color:#666; font-size:.65rem">{{ rot[0].time_slot }}〜</span>
+            {% if rot[0].gap_danger %}<span style="color:#e63946;font-size:.62rem"> 🔴{{ rot[0].gap_min }}分</span>{% endif %}
+            {% if rot[0].gap_caution %}<span style="color:#856404;font-size:.62rem"> 🟡{{ rot[0].gap_min }}分</span>{% endif %}
+          {% else %}<span style="color:#ddd">—</span>{% endif %}
+        </td>
+        {% endfor %}
+        <td style="text-align:center; font-size:.72rem">
+          {% if rots|selectattr('warn_3rd')|list %}<span style="color:#e63946;font-weight:700">⚠️3回転</span>
+          {% elif rots|length == 2 %}<span style="color:#198754;font-weight:600">2回転</span>
+          {% elif rots|length == 1 %}<span style="color:#888">1回転</span>
+          {% else %}<span style="color:#ccc">—</span>{% endif %}
+        </td>
+        <td class="note-cell"></td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {# ディナー手書き記入欄
+     page-break-inside:avoid でサマリーが長ければ次ページへ自動移動 #}
+  <div class="walkin-block">
+    <div class="walkin-head">
+      🥩 ディナー 飛び込み・手書き記入欄
+      <span>予約済 {{ dinner_res_count }}組　／　手書き枠 {{ dinner_walkin }}行　（最大 {{ max_groups }}組）</span>
+    </div>
+    <table class="walkin-tbl">
+      <thead>
+        <tr>
+          <th style="width:4%">No.</th>
+          <th style="width:8%">時間</th>
+          <th style="width:30%">お名前・様</th>
+          <th style="width:7%">人数</th>
+          <th style="width:10%">テーブル</th>
+          <th>備考</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in range(dinner_walkin) %}
+        <tr>
+          <td class="nc">{{ dinner_res_count + i + 1 }}</td>
+          <td></td><td></td><td></td><td></td><td></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>{# /section #}
+
+</div>{# /wrap #}
+</body>
+</html>

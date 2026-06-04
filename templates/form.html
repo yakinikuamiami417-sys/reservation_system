@@ -1,0 +1,655 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'new' %}新規予約{% else %}予約編集{% endif %} — キリン屋{% endblock %}
+
+{% block content %}
+
+<!-- ヘッダー -->
+<div class="d-flex align-items-center gap-3 mb-4">
+  <a href="/" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h4 class="mb-0">
+    {% if mode == 'new' %}📞 新規予約登録{% else %}✏️ 予約編集{% endif %}
+  </h4>
+</div>
+
+<!-- ===== リアルタイム警告エリア ===== -->
+<div id="conflictBox" class="conflict-box d-none mb-3" role="alert">
+  <strong>⚠️ 入店時間が近い予約があります（15分未満）</strong>
+  <div id="conflictList" class="mt-1 small"></div>
+  <div class="mt-1 text-muted small">確認の上、そのまま登録できます。VIPフラグをONにすると次回からこの警告を非表示にできます。</div>
+</div>
+
+<div id="seatBox" class="seat-box d-none mb-3">
+  <strong><i class="bi bi-grid-3x2-gap me-1"></i>席割り当て提案：</strong>
+  <span id="seatNote" class="fw-bold"></span>
+</div>
+
+<!-- ===== フォーム ===== -->
+<form method="POST" id="resForm" novalidate>
+<div class="row g-4">
+
+  <!-- ======================== 左カラム: 基本情報 ======================== -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header py-3">
+        <i class="bi bi-person-lines-fill me-2 text-danger"></i>基本情報
+      </div>
+      <div class="card-body">
+
+        <!-- 氏名 -->
+        <div class="mb-3">
+          <label class="form-label required fw-semibold">氏名（フルネーム）</label>
+          <input type="text" name="name" class="form-control form-control-lg"
+                 placeholder="山田 太郎" required autocomplete="off"
+                 value="{{ reservation.name if reservation else '' }}">
+        </div>
+
+        <!-- 電話番号 -->
+        <div class="mb-3">
+          <label class="form-label required fw-semibold">電話番号</label>
+          <input type="tel" name="phone" class="form-control form-control-lg"
+                 placeholder="090-0000-0000" required autocomplete="off"
+                 value="{{ reservation.phone if reservation else '' }}">
+        </div>
+
+        <!-- 日付 & 時間 -->
+        <div class="row g-3 mb-3">
+          <div class="col-sm-6">
+            <label class="form-label required fw-semibold">日付</label>
+            <input type="date" name="date" id="fDate" class="form-control" required
+                   value="{{ reservation.date if reservation else default_date }}"
+                   onchange="triggerCheck()">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label required fw-semibold">時間（15分単位）</label>
+            <select name="time_slot" id="fTime" class="form-select" onchange="triggerCheck()">
+              {% for slot in time_slots %}
+              <option value="{{ slot }}"
+                {{ 'selected' if reservation and reservation.time_slot == slot else '' }}>
+                {{ slot }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <!-- 利用時間 -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold">利用時間</label>
+          <select name="duration_minutes" id="fDuration" class="form-select" onchange="triggerCheck()">
+            {% for val, label in duration_options %}
+            <option value="{{ val }}"
+              {{ 'selected' if reservation and reservation.duration_minutes == val
+                 else ('selected' if not reservation and val == 105 else '') }}>
+              {{ label }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- 人数カウンター -->
+        <div class="mb-2">
+          <label class="form-label fw-semibold">人数</label>
+          <div class="d-flex align-items-center gap-4 flex-wrap">
+            <!-- 大人 -->
+            <div>
+              <div class="text-muted small mb-1">大人</div>
+              <div class="d-flex align-items-center gap-1">
+                <button type="button" class="btn btn-outline-secondary counter-btn"
+                        onclick="adjustNum('fAdults', -1, 1)">－</button>
+                <input type="number" name="adults" id="fAdults" class="form-control text-center fw-bold"
+                       style="width:60px" min="1" max="99" readonly
+                       value="{{ reservation.adults if reservation else 1 }}"
+                       onchange="updateTotal()">
+                <button type="button" class="btn btn-outline-secondary counter-btn"
+                        onclick="adjustNum('fAdults', 1, 1)">＋</button>
+              </div>
+            </div>
+            <!-- 子供（件数表示） -->
+            <div>
+              <div class="text-muted small mb-1">子供</div>
+              <div class="fw-bold fs-5 pt-1" id="childCountBadge">0名</div>
+            </div>
+            <!-- 合計 -->
+            <div>
+              <div class="text-muted small mb-1">合計</div>
+              <div class="fw-bold fs-4 text-danger" id="totalBadge">1名</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 子供の年齢 -->
+        <div class="mb-3 ms-1">
+          <div id="childContainer">
+            {% if reservation and reservation.children_info %}
+              {% for child in reservation.children_info %}
+              <div class="d-flex align-items-center gap-2 mb-2 child-row">
+                <span class="text-muted small" style="min-width:44px">子供{{ loop.index }}</span>
+                <input type="number" name="child_age[]" class="form-control form-control-sm"
+                       style="width:72px" placeholder="歳" min="0" max="17"
+                       value="{{ child.age }}" onchange="updateTotal()">
+                <span class="text-muted small">歳</span>
+                <button type="button" class="btn btn-outline-danger btn-sm"
+                        onclick="removeChild(this)">✕</button>
+              </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+          <button type="button" class="btn btn-outline-secondary btn-sm mt-1" onclick="addChild()">
+            <i class="bi bi-plus"></i> 子供を追加
+          </button>
+        </div>
+
+        <!-- 備考 -->
+        <div class="mb-1 mt-3">
+          <label class="form-label fw-semibold">
+            <i class="bi bi-sticky me-1 text-secondary"></i>備考
+          </label>
+          <textarea name="notes" class="form-control" rows="3"
+            placeholder="アレルギー・お席のご要望・記念日・その他スタッフへの申し送り事項など…">{{ reservation.notes if reservation and reservation.notes else '' }}</textarea>
+          <div class="form-text text-muted">全スタッフが確認できます。詳細一覧にも表示されます。</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================== 右カラム: オプション + 団体 ======================== -->
+  <div class="col-lg-6">
+
+    <!-- 席・特例オプション -->
+    <div class="card mb-3">
+      <div class="card-header py-3">
+        <i class="bi bi-sliders me-2 text-danger"></i>席・特例オプション
+      </div>
+      <div class="card-body">
+
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" id="swPrivate" name="private_room"
+                 role="switch"
+                 {{ 'checked' if reservation and reservation.private_room else '' }}>
+          <label class="form-check-label" for="swPrivate">
+            <i class="bi bi-door-closed me-1"></i><strong>個室希望</strong>
+            <small class="d-block text-muted">10番(バッファ席)またはVIPエリアを優先案内</small>
+          </label>
+        </div>
+
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="swVip" name="is_vip"
+                 role="switch"
+                 {{ 'checked' if reservation and reservation.is_vip else '' }}>
+          <label class="form-check-label" for="swVip">
+            <span class="fw-bold" style="color:var(--kirin-gold)">
+              <i class="bi bi-star-fill me-1"></i>VIP / 特例対応
+            </span>
+            <small class="d-block text-muted">ONにすると入店時間の警告を無視して登録できます</small>
+          </label>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 団体予約情報（8名以上で自動表示） -->
+    <div class="card" id="groupCard" style="display:none">
+      <div class="card-header py-3" style="background:#fffbea; border-bottom-color:#ffe082">
+        <i class="bi bi-people-fill me-2" style="color:#b8860b"></i>
+        <span style="color:#b8860b">団体予約情報</span>
+        <span class="badge bg-warning text-dark ms-2" id="groupBadge">?名</span>
+      </div>
+      <div class="card-body">
+
+        <!-- 予算 -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold">ご予算（お一人様）</label>
+          <div class="input-group">
+            <span class="input-group-text">¥</span>
+            <input type="number" name="budget_per_person" class="form-control"
+                   placeholder="6000" min="0" step="500"
+                   value="{{ reservation.budget_per_person if reservation and reservation.budget_per_person else '' }}">
+            <span class="input-group-text">円</span>
+          </div>
+          <div class="form-text">推奨: ¥6,000／名</div>
+        </div>
+
+        <!-- ニーズ -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold">ニーズ</label>
+          <div class="d-flex gap-4">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="needs_type"
+                     value="quality" id="needsQ"
+                     {{ 'checked' if reservation and reservation.needs_type == 'quality' else '' }}>
+              <label class="form-check-label" for="needsQ">🥩 品質重視</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="needs_type"
+                     value="quantity" id="needsA"
+                     {{ 'checked' if reservation and reservation.needs_type == 'quantity' else '' }}>
+              <label class="form-check-label" for="needsA">🍽️ 量重視</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 男女比 -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold">男女比</label>
+          <div class="row g-2">
+            <div class="col">
+              <div class="input-group">
+                <span class="input-group-text">👨</span>
+                <input type="number" name="gender_male" class="form-control"
+                       placeholder="男性" min="0"
+                       value="{{ reservation.gender_male if reservation and reservation.gender_male is not none else '' }}">
+                <span class="input-group-text">名</span>
+              </div>
+            </div>
+            <div class="col">
+              <div class="input-group">
+                <span class="input-group-text">👩</span>
+                <input type="number" name="gender_female" class="form-control"
+                       placeholder="女性" min="0"
+                       value="{{ reservation.gender_female if reservation and reservation.gender_female is not none else '' }}">
+                <span class="input-group-text">名</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 幹事メモ -->
+        <div class="mb-1">
+          <label class="form-label fw-semibold">幹事様のご要望メモ</label>
+          <textarea name="organizer_note" class="form-control" rows="3"
+            placeholder="アレルギー対応・席の配置希望・サプライズ・お子様椅子など…">{{ reservation.organizer_note if reservation and reservation.organizer_note else '' }}</textarea>
+        </div>
+
+      </div>
+    </div><!-- /groupCard -->
+
+  </div><!-- /右カラム -->
+</div><!-- /row -->
+
+<!-- ===== 席確定マップ（全幅） ===== -->
+<div class="card mt-4" id="seatMapCard">
+  <div class="card-header py-3 d-flex align-items-center gap-2">
+    <i class="bi bi-grid-3x2-gap-fill text-danger"></i>
+    <span class="fw-bold">席の確定</span>
+    <span class="text-muted small ms-1">— テーブルをクリックして選択 → 緑になったら確定です</span>
+    <div class="ms-auto d-flex gap-2 align-items-center" style="font-size:.78rem">
+      <span class="seat-legend available">空席</span>
+      <span class="seat-legend suggested">提案</span>
+      <span class="seat-legend selected">✅ 確定</span>
+      <span class="seat-legend occupied">使用中</span>
+      <span class="seat-legend blocked">⚠️ 隣接ブロック</span>
+    </div>
+  </div>
+  <div class="card-body">
+
+    <!-- メインフロア 1〜5番 -->
+    <div class="mb-3">
+      <div class="zone-label">📍 メインフロア（各6席・隣接連結可）</div>
+      <div class="d-flex gap-2 flex-wrap mt-2">
+        {% for t in [1,2,3,4,5] %}
+        <button type="button" class="seat-btn" id="sbtn-{{ t }}" data-table="{{ t }}"
+                onclick="toggleSeat({{ t }})">
+          <div class="seat-num">{{ t }}番</div>
+          <div class="seat-cap">6席</div>
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- サイドA/B -->
+    <div class="row g-3 mb-3">
+      <div class="col-auto">
+        <div class="zone-label">📍 サイドA（連結で8席）</div>
+        <div class="d-flex gap-2 mt-2">
+          {% for t in [6,7] %}
+          <button type="button" class="seat-btn" id="sbtn-{{ t }}" data-table="{{ t }}"
+                  onclick="toggleSeat({{ t }})">
+            <div class="seat-num">{{ t }}番</div>
+            <div class="seat-cap">4席</div>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-auto">
+        <div class="zone-label">📍 サイドB（連結で8席）</div>
+        <div class="d-flex gap-2 mt-2">
+          {% for t in [8,9] %}
+          <button type="button" class="seat-btn" id="sbtn-{{ t }}" data-table="{{ t }}"
+                  onclick="toggleSeat({{ t }})">
+            <div class="seat-num">{{ t }}番</div>
+            <div class="seat-cap">4席</div>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-auto">
+        <div class="zone-label">📍 VIPエリア</div>
+        <div class="d-flex gap-2 mt-2">
+          <button type="button" class="seat-btn" id="sbtn-10" data-table="10"
+                  onclick="toggleSeat(10)">
+            <div class="seat-num">10番🔒</div>
+            <div class="seat-cap">6席 バッファ</div>
+          </button>
+          <button type="button" class="seat-btn" id="sbtn-11" data-table="11"
+                  onclick="toggleSeat(11)">
+            <div class="seat-num">11番</div>
+            <div class="seat-cap">8席</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 確定表示エリア -->
+    <div id="seatConfirmDisplay" class="p-3 rounded border mt-2"
+         style="background:#f8f9fa; min-height:52px">
+      <span class="text-muted">← 上のテーブルをクリックして席を確定してください</span>
+    </div>
+
+    <!-- 隠しフィールド: 確定テーブルリスト -->
+    <input type="hidden" name="confirmed_tables" id="confirmedTablesInput"
+           value="{{ reservation.assigned_tables | tojson if reservation else '[]' }}">
+
+  </div>
+</div><!-- /seatMapCard -->
+
+<!-- ===== 送信ボタン ===== -->
+<div class="d-flex justify-content-end gap-3 mt-4 pb-4">
+  <a href="/" class="btn btn-outline-secondary px-4">キャンセル</a>
+  <button type="submit" class="btn btn-kirin btn-lg px-5" id="submitBtn">
+    {% if mode == 'new' %}
+    <i class="bi bi-check-circle-fill me-2"></i>予約を登録する
+    {% else %}
+    <i class="bi bi-save-fill me-2"></i>変更を保存する
+    {% endif %}
+  </button>
+</div>
+
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ======================================================
+// 子供管理
+// ======================================================
+let _childSeq = {{ (reservation.children_info|length) if reservation else 0 }};
+
+function addChild() {
+  _childSeq++;
+  const row = document.createElement('div');
+  row.className = 'd-flex align-items-center gap-2 mb-2 child-row';
+  row.innerHTML = `
+    <span class="text-muted small" style="min-width:44px">子供${_childSeq}</span>
+    <input type="number" name="child_age[]" class="form-control form-control-sm"
+           style="width:72px" placeholder="歳" min="0" max="17" onchange="updateTotal()">
+    <span class="text-muted small">歳</span>
+    <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeChild(this)">✕</button>
+  `;
+  document.getElementById('childContainer').appendChild(row);
+  updateTotal();
+  row.querySelector('input').focus();
+}
+
+function removeChild(btn) {
+  btn.closest('.child-row').remove();
+  // ラベル番号振り直し
+  document.querySelectorAll('.child-row').forEach((r, i) => {
+    r.querySelector('span').textContent = `子供${i + 1}`;
+  });
+  _childSeq = document.querySelectorAll('.child-row').length;
+  updateTotal();
+}
+
+// ======================================================
+// 人数カウンター
+// ======================================================
+function adjustNum(id, delta, minVal) {
+  const el = document.getElementById(id);
+  const newVal = Math.max(minVal, parseInt(el.value || minVal) + delta);
+  el.value = newVal;
+  updateTotal();
+}
+
+function updateTotal() {
+  const adults = parseInt(document.getElementById('fAdults').value || 1);
+  const childRows = document.querySelectorAll('.child-row');
+  const total = adults + childRows.length;
+
+  document.getElementById('childCountBadge').textContent = childRows.length + '名';
+  document.getElementById('totalBadge').textContent = total + '名';
+
+  // 団体カード表示制御（8名以上）
+  const gc = document.getElementById('groupCard');
+  if (total >= 8) {
+    gc.style.display = '';
+    document.getElementById('groupBadge').textContent = total + '名';
+  } else {
+    gc.style.display = 'none';
+  }
+
+  triggerCheck();
+}
+
+// ======================================================
+// リアルタイム競合チェック（AJAX）
+// ======================================================
+let _checkTimer = null;
+
+function triggerCheck() {
+  clearTimeout(_checkTimer);
+  _checkTimer = setTimeout(doCheck, 400);
+}
+
+// ======================================================
+// 席確定マップ
+// ======================================================
+const TABLE_CAP = {1:6,2:6,3:6,4:6,5:6,6:4,7:4,8:4,9:4,10:6,11:8};
+
+let _selectedTables  = [];   // スタッフが確定した席
+let _suggestedTables = [];   // システム提案
+let _occupiedTables  = [];   // 使用中
+let _blockedTables   = [];   // ブロック中
+
+// 初期値（編集時は既存の割当を初期選択）
+(function () {
+  try {
+    const init = JSON.parse(
+      document.getElementById('confirmedTablesInput').value || '[]'
+    );
+    _selectedTables = init.map(Number).filter(Boolean);
+  } catch(e) { _selectedTables = []; }
+})();
+
+function toggleSeat(tableId) {
+  // ブロック中かつ非使用中（団体隣接ブロック）→ スタッフ判断で上書き可
+  if (_blockedTables.includes(tableId) && !_occupiedTables.includes(tableId)) {
+    if (!confirm(tableId + '番は団体予約の隣接ブロック席です。\nスタッフ判断で選択しますか？')) return;
+  }
+  // 使用中（ブロックと重複していても使用中として扱う）
+  else if (_occupiedTables.includes(tableId)) {
+    if (!confirm(tableId + '番は現在使用中です。\n強制的に選択する場合は「OK」を押してください。\n（時間重複に注意）')) return;
+  }
+  const idx = _selectedTables.indexOf(tableId);
+  if (idx >= 0) {
+    _selectedTables.splice(idx, 1);
+  } else {
+    _selectedTables.push(tableId);
+    _selectedTables.sort((a,b)=>a-b);
+  }
+  _renderSeatMap();
+}
+
+function acceptSuggestion() {
+  _selectedTables = [..._suggestedTables];
+  _renderSeatMap();
+}
+
+function clearSeatSelection() {
+  _selectedTables = [];
+  _renderSeatMap();
+}
+
+function _renderSeatMap() {
+  // ボタンの色を更新
+  for (let t = 1; t <= 11; t++) {
+    const btn = document.getElementById('sbtn-' + t);
+    if (!btn) continue;
+    btn.className = 'seat-btn';
+    if (_selectedTables.includes(t))       btn.classList.add('selected');
+    else if (_occupiedTables.includes(t))  btn.classList.add('occupied');
+    else if (_blockedTables.includes(t))   btn.classList.add('blocked');
+    else if (_suggestedTables.includes(t)) btn.classList.add('suggested');
+    else                                    btn.classList.add('available');
+  }
+
+  // 確定エリアの表示
+  const display = document.getElementById('seatConfirmDisplay');
+  if (_selectedTables.length > 0) {
+    const cap = _selectedTables.reduce((s,t) => s + (TABLE_CAP[t]||0), 0);
+    display.style.background = '#f0fff4';
+    display.style.borderColor = '#198754';
+    display.innerHTML =
+      '<strong class="text-success">✅ 確定済み: </strong>' +
+      _selectedTables.map(t => `<span class="badge bg-primary me-1 fs-6">${t}番</span>`).join('') +
+      `<span class="text-muted ms-2">（計 ${cap}席）</span>` +
+      '<button type="button" class="btn btn-sm btn-outline-secondary ms-3" onclick="clearSeatSelection()">クリア</button>';
+  } else if (_suggestedTables.length > 0) {
+    display.style.background = '#fffde7';
+    display.style.borderColor = '#f59e0b';
+    display.innerHTML =
+      '<span class="text-warning fw-bold">⚡ システム提案: </span>' +
+      _suggestedTables.map(t => `<span class="badge bg-warning text-dark me-1 fs-6">${t}番</span>`).join('') +
+      '<button type="button" class="btn btn-sm btn-primary ms-3" onclick="acceptSuggestion()">この席で確定する ✓</button>';
+  } else {
+    display.style.background = '#f8f9fa';
+    display.style.borderColor = '#dee2e6';
+    display.innerHTML = '<span class="text-muted">← 上のテーブルをクリックして席を確定してください</span>';
+  }
+
+  // 隠しフィールドに書き込み
+  document.getElementById('confirmedTablesInput').value = JSON.stringify(_selectedTables);
+}
+
+// ======================================================
+// リアルタイム競合チェック（AJAX）
+// ======================================================
+async function doCheck() {
+  const date     = document.getElementById('fDate').value;
+  const timeSlot = document.getElementById('fTime').value;
+  const adults   = parseInt(document.getElementById('fAdults').value || 1);
+  const childCnt = document.querySelectorAll('.child-row').length;
+  const total    = adults + childCnt;
+  const dur      = parseInt(document.getElementById('fDuration').value || 105);
+
+  if (!date || !timeSlot) return;
+
+  const payload = {
+    date, time_slot: timeSlot,
+    total_people: total, duration_minutes: dur,
+    {% if reservation %}edit_id: {{ reservation.id }},{% endif %}
+  };
+
+  try {
+    const res  = await fetch('/api/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+
+    // 競合表示
+    const cBox = document.getElementById('conflictBox');
+    if (data.conflicts && data.conflicts.length > 0) {
+      cBox.classList.remove('d-none');
+      document.getElementById('conflictList').innerHTML =
+        data.conflicts.map(c =>
+          `<span class="me-3 badge bg-warning text-dark">⏰ ${c.time_slot}　${c.name} 様</span>`
+        ).join('');
+    } else {
+      cBox.classList.add('d-none');
+    }
+
+    // 席提案バナー更新
+    const sBox = document.getElementById('seatBox');
+    if (data.seat_suggestion && data.seat_suggestion.note) {
+      sBox.classList.remove('d-none');
+      document.getElementById('seatNote').textContent = data.seat_suggestion.note;
+      sBox.style.borderColor = data.seat_suggestion.tables.length ? '#0d6efd' : '#dc3545';
+      sBox.style.background  = data.seat_suggestion.tables.length ? '#eff6ff' : '#fff5f5';
+    } else {
+      sBox.classList.add('d-none');
+    }
+
+    // 席マップ更新（使用中・ブロック・提案）
+    if (data.seat_map) {
+      _occupiedTables  = (data.seat_map.occupied || []).map(Number);
+      _blockedTables   = (data.seat_map.blocked  || []).map(Number);
+    }
+    _suggestedTables = ((data.seat_suggestion && data.seat_suggestion.tables) || []).map(Number);
+    _renderSeatMap();
+
+  } catch (e) {
+    console.warn('競合チェックAPI エラー:', e);
+  }
+}
+
+// ======================================================
+// 初期化
+// ======================================================
+updateTotal();  // 子供カウント・団体カードの初期化
+
+{% if mode == 'new' %}
+// 新規: デフォルト時間を「現在の次の15分スロット」に設定
+(function () {
+  const now = new Date();
+  const m   = Math.ceil(now.getMinutes() / 15) * 15;
+  now.setMinutes(m >= 60 ? 0 : m, 0, 0);
+  if (m >= 60) now.setHours(now.getHours() + 1);
+  const hh  = String(now.getHours()).padStart(2, '0');
+  const mm  = String(now.getMinutes()).padStart(2, '0');
+  const cur = `${hh}:${mm}`;
+  const sel = document.getElementById('fTime');
+  let found = false;
+  for (const opt of sel.options) {
+    if (opt.value >= cur && !found) { opt.selected = true; found = true; }
+  }
+  // 業務時間外なら17:30デフォルト
+  const h24 = now.getHours();
+  if (!found || h24 < 11 || h24 >= 22) {
+    for (const opt of sel.options) {
+      if (opt.value === '17:30') { opt.selected = true; break; }
+    }
+  }
+})();
+{% endif %}
+
+// ======================================================
+// 送信前チェック: 席未確定なら確認ダイアログ
+// ======================================================
+document.getElementById('resForm').addEventListener('submit', function(e) {
+  if (_selectedTables.length === 0) {
+    if (_suggestedTables.length > 0) {
+      const ok = confirm(
+        '席がまだ確定されていません。\n' +
+        'システム提案の「' + _suggestedTables.join('・') + '番」で自動登録しますか？\n\n' +
+        '（キャンセルすると、テーブルをクリックして手動確定できます）'
+      );
+      if (!ok) { e.preventDefault(); return; }
+      // 提案を自動確定
+      _selectedTables = [..._suggestedTables];
+      document.getElementById('confirmedTablesInput').value = JSON.stringify(_selectedTables);
+    }
+    // 提案もない場合はそのまま登録（席未定として保存）
+  }
+});
+
+// ======================================================
+// 初期化
+// ======================================================
+_renderSeatMap();   // 初期状態を描画（編集時は既存席を選択済みで表示）
+triggerCheck();     // 初回チェック実行
+</script>
+{% endblock %}

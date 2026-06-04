@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}{{ date_display }} — キリン屋 予約{% endblock %}
+
+{% block content %}
+
+<!-- ===== 日付ナビゲーション ===== -->
+<div class="d-flex flex-wrap align-items-center gap-2 mb-4">
+  <a href="/?date={{ prev_date }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-chevron-left"></i>
+  </a>
+  <h4 class="mb-0 mx-1">{{ date_display }}</h4>
+  {% if target_date == today %}
+    <span class="badge bg-success fs-6 px-2">本日</span>
+  {% endif %}
+  <a href="/?date={{ next_date }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-chevron-right"></i>
+  </a>
+  <input type="date" class="form-control form-control-sm ms-2" style="width:160px"
+         value="{{ target_date }}" onchange="location.href='/?date='+this.value">
+  <a href="/timetable?date={{ target_date }}" class="btn btn-outline-dark btn-sm ms-auto">
+    <i class="bi bi-calendar3 me-1"></i>タイムテーブル
+  </a>
+  <a href="/reservation/new?date={{ target_date }}" class="btn btn-kirin btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>新規予約
+  </a>
+</div>
+
+<div class="row g-4">
+
+  <!-- ===== 左: 予約リスト ===== -->
+  <div class="col-lg-7 col-xl-8">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center py-3">
+        <span><i class="bi bi-calendar-event me-2 text-danger"></i>予約一覧</span>
+        <span class="badge bg-secondary rounded-pill">{{ reservations|length }}件</span>
+      </div>
+      <div class="card-body p-0">
+
+        {% if not reservations %}
+        <div class="text-center py-5 text-muted">
+          <i class="bi bi-calendar-x" style="font-size:2.5rem; color:#ccc"></i>
+          <p class="mt-3 mb-1">この日の予約はありません</p>
+          <a href="/reservation/new?date={{ target_date }}" class="btn btn-kirin btn-sm mt-2">
+            <i class="bi bi-plus-lg me-1"></i>予約を追加する
+          </a>
+        </div>
+
+        {% else %}
+        <div class="list-group list-group-flush">
+        {% for res in reservations %}
+          {% set card_cls = 'vip' if res.is_vip else ('group' if res.is_group else '') %}
+          <a href="/reservation/{{ res.id }}"
+             class="list-group-item list-group-item-action px-4 py-3 res-card {{ card_cls }}">
+            <div class="d-flex align-items-start gap-3">
+              <!-- 時刻 -->
+              <div class="pt-1">
+                <span class="badge-time">{{ res.time_slot }}</span>
+                <div class="text-muted text-center mt-1" style="font-size:.68rem">
+                  {% set dur_h = res.duration_minutes // 60 %}
+                  {% set dur_m = res.duration_minutes % 60 %}
+                  {{ dur_h }}h{{ '%02d'|format(dur_m) }}m
+                </div>
+              </div>
+              <!-- 詳細 -->
+              <div class="flex-grow-1 min-width-0">
+                <div class="d-flex align-items-center flex-wrap gap-1 mb-1">
+                  <strong class="fs-6">{{ res.name }} 様</strong>
+                  {% if res.is_vip    %}<span class="badge badge-vip"><i class="bi bi-star-fill me-1"></i>VIP</span>{% endif %}
+                  {% if res.is_group  %}<span class="badge badge-group text-white"><i class="bi bi-people-fill me-1"></i>団体</span>{% endif %}
+                  {% if res.private_room %}<span class="badge badge-priv"><i class="bi bi-door-closed me-1"></i>個室</span>{% endif %}
+                </div>
+                <div class="text-muted small d-flex flex-wrap gap-3">
+                  <span><i class="bi bi-person-fill me-1"></i>
+                    {{ res.total_people }}名（大{{ res.adults }}
+                    {% if res.children_info %}・子{{ res.children_info|length }}{% endif %}）
+                  </span>
+                  <span><i class="bi bi-telephone-fill me-1"></i>{{ res.phone }}</span>
+                  {% if res.is_group and res.budget_per_person %}
+                  <span><i class="bi bi-currency-yen me-1"></i>{{ "{:,}".format(res.budget_per_person) }}/名</span>
+                  {% endif %}
+                </div>
+                <!-- テーブル -->
+                {% if res.assigned_tables %}
+                <div class="mt-2">
+                  {% for t in res.assigned_tables %}
+                  <span class="badge bg-light text-dark border me-1">
+                    <i class="bi bi-grid-3x2-gap me-1"></i>{{ t }}番
+                  </span>
+                  {% endfor %}
+                </div>
+                {% endif %}
+                {% if res.organizer_note %}
+                <div class="mt-1 text-muted small">
+                  <i class="bi bi-chat-left-text me-1"></i>{{ res.organizer_note[:50] }}{% if res.organizer_note|length > 50 %}…{% endif %}
+                </div>
+                {% endif %}
+              </div>
+              <i class="bi bi-chevron-right text-muted align-self-center"></i>
+            </div>
+          </a>
+        {% endfor %}
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 右: テーブルマップ + サマリー ===== -->
+  <div class="col-lg-5 col-xl-4">
+
+    <!-- テーブルマップ -->
+    <div class="card mb-3">
+      <div class="card-header py-3">
+        <i class="bi bi-grid-3x2-gap-fill me-2 text-danger"></i>テーブル状況
+      </div>
+      <div class="card-body">
+        <!-- メインフロア (1-5) -->
+        <p class="text-muted mb-1" style="font-size:.75rem; font-weight:600">📍 メインフロア（各6席）</p>
+        <div class="row g-2 mb-3">
+          {% for t_id in [1,2,3,4,5] %}
+          {% set info = tables[t_id] %}
+          {% set tlist = table_status.get(t_id, []) %}
+          <div class="col">
+            <div class="tbl-block {{ 'occupied' if tlist else ('buffer' if info.is_buffer else 'available') }}">
+              <div class="fw-bold" style="font-size:.8rem">{{ t_id }}番</div>
+              <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席</div>
+              {% for r in tlist %}
+              <div style="font-size:.6rem; line-height:1.2; color:#b01">
+                {{ r.time_slot }}-{{ r.end_time }}<br>{{ r.name[:4] }}
+              </div>
+              {% endfor %}
+              {% if not tlist %}
+              <div style="color:green; font-size:.65rem">空席</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- サイドA(6-7) / サイドB(8-9) -->
+        <p class="text-muted mb-1" style="font-size:.75rem; font-weight:600">📍 サイドA・B（各4席）</p>
+        <div class="row g-2 mb-3">
+          {% for t_id in [6,7,8,9] %}
+          {% set info = tables[t_id] %}
+          {% set tlist = table_status.get(t_id, []) %}
+          <div class="col-3">
+            <div class="tbl-block {{ 'occupied' if tlist else 'available' }}">
+              <div class="fw-bold" style="font-size:.8rem">{{ t_id }}番</div>
+              <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席</div>
+              {% for r in tlist %}
+              <div style="font-size:.6rem; line-height:1.2; color:#b01">{{ r.name[:4] }}</div>
+              {% endfor %}
+              {% if not tlist %}
+              <div style="color:green; font-size:.65rem">空席</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- VIPエリア(10-11) -->
+        <p class="text-muted mb-1" style="font-size:.75rem; font-weight:600">📍 VIPエリア</p>
+        <div class="row g-2 mb-3">
+          {% for t_id in [10,11] %}
+          {% set info = tables[t_id] %}
+          {% set tlist = table_status.get(t_id, []) %}
+          <div class="col-6">
+            <div class="tbl-block {{ 'occupied' if tlist else ('buffer' if info.is_buffer else 'available') }}">
+              <div class="fw-bold" style="font-size:.8rem">{{ t_id }}番 {% if info.is_buffer %}🔒{% endif %}</div>
+              <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席 {{ info.zone }}</div>
+              {% for r in tlist %}
+              <div style="font-size:.6rem; line-height:1.2; color:#b01">
+                {{ r.time_slot }}<br>{{ r.name[:4] }}
+              </div>
+              {% endfor %}
+              {% if not tlist %}
+              <div style="color:green; font-size:.65rem">空席</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- 凡例 -->
+        <div class="d-flex flex-wrap gap-2 mt-2" style="font-size:.7rem">
+          <span>🟢 空席</span>
+          <span>🔴 使用中</span>
+          <span>🟡 バッファ(10番)</span>
+          <span>🔒 優先空け</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- サマリー -->
+    <div class="card">
+      <div class="card-header py-3">
+        <i class="bi bi-bar-chart-fill me-2 text-danger"></i>本日のサマリー
+      </div>
+      <div class="card-body">
+        {% set total_guests = reservations | sum(attribute='total_people') %}
+        <div class="row g-2 text-center">
+          <div class="col-6">
+            <div class="p-2 bg-light rounded">
+              <div class="fs-3 fw-bold text-danger">{{ reservations|length }}</div>
+              <div class="small text-muted">組数</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-2 bg-light rounded">
+              <div class="fs-3 fw-bold text-danger">{{ total_guests }}</div>
+              <div class="small text-muted">合計人数</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-2 bg-light rounded">
+              <div class="fs-3 fw-bold" style="color:var(--kirin-gold)">
+                {{ reservations | selectattr('is_vip', 'equalto', 1) | list | length }}
+              </div>
+              <div class="small text-muted">VIP組</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-2 bg-light rounded">
+              <div class="fs-3 fw-bold" style="color:#5a4b8c">
+                {{ reservations | selectattr('is_group', 'equalto', 1) | list | length }}
+              </div>
+              <div class="small text-muted">団体組</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /右カラム -->
+</div>
+
+{% endblock %}

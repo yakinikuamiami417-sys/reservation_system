@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}キリン屋 予約{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  <style>
+    :root {
+      --kirin-red:   #8B1A1A;
+      --kirin-gold:  #C9A227;
+      --kirin-dark:  #1a1a1a;
+      --kirin-bg:    #f7f4f0;
+    }
+    body { background: var(--kirin-bg); font-family: 'Segoe UI', 'Hiragino Kaku Gothic ProN', sans-serif; }
+
+    /* ナビバー */
+    .navbar       { background: var(--kirin-dark); border-bottom: 3px solid var(--kirin-red); }
+    .navbar-brand { color: var(--kirin-gold) !important; font-size: 1.25rem; font-weight: 700; letter-spacing: 1px; }
+
+    /* ボタン */
+    .btn-kirin { background: var(--kirin-red); color: #fff; border: none; }
+    .btn-kirin:hover { background: #6e1212; color: #fff; }
+
+    /* カード */
+    .card { border: none; box-shadow: 0 2px 10px rgba(0,0,0,.08); border-radius: 12px; }
+    .card-header { border-radius: 12px 12px 0 0 !important; background: #fff; border-bottom: 1px solid #eee; font-weight: 600; }
+
+    /* 時間バッジ */
+    .badge-time { display: inline-block; background: var(--kirin-red); color: #fff;
+                  padding: 3px 10px; border-radius: 5px; font-size: .85rem; font-weight: 700; white-space: nowrap; }
+    /* バッジ */
+    .badge-vip   { background: var(--kirin-gold); color: #1a1a1a; font-weight: 700; }
+    .badge-group { background: #5a4b8c; }
+    .badge-priv  { background: #0d6efd; }
+
+    /* 予約カード */
+    .res-card { border-left: 4px solid var(--kirin-red); transition: transform .1s; }
+    .res-card:hover { transform: translateX(3px); background: #fdf8f5; }
+    .res-card.vip   { border-left-color: var(--kirin-gold); }
+    .res-card.group { border-left-color: #5a4b8c; }
+
+    /* テーブルマップ */
+    .tbl-block { border: 2px solid #dee2e6; border-radius: 8px; padding: 6px 4px; text-align: center; font-size: .75rem; min-height: 70px; }
+    .tbl-block.available { border-color: #198754; background: #f0fff4; }
+    .tbl-block.occupied  { border-color: #dc3545; background: #fff5f5; }
+    .tbl-block.buffer    { border-color: var(--kirin-gold); background: #fffcf0; }
+    .tbl-block.blocked   { border-color: #adb5bd; background: #f5f5f5; opacity: .7; }
+
+    /* 競合アラート */
+    .conflict-box { border: 2px solid #ffc107; background: #fffde7; border-radius: 10px; padding: 12px 16px; }
+    .seat-box     { border: 2px solid #0d6efd; background: #eff6ff; border-radius: 10px; padding: 12px 16px; }
+
+    /* フォーム */
+    .form-label.required::after { content: " *"; color: #dc3545; }
+    .counter-btn { width: 34px; height: 34px; padding: 0; font-size: 1.1rem; line-height: 1; }
+
+    /* タイムライン */
+    .timeline-row { border-bottom: 1px dashed #e0e0e0; min-height: 40px; }
+    .timeline-row:hover { background: #faf8f5; }
+    .tl-time { width: 55px; font-size: .78rem; color: #888; padding: 8px 4px; }
+    .tl-bar  { font-size: .75rem; }
+
+    /* 席確定マップ */
+    .seat-btn {
+      width: 88px; height: 72px; border: 2px solid #dee2e6; border-radius: 10px;
+      background: #fff; cursor: pointer; transition: all .15s; padding: 4px;
+    }
+    .seat-btn .seat-num { font-weight: 700; font-size: .88rem; }
+    .seat-btn .seat-cap { font-size: .68rem; color: #666; }
+    .seat-btn.available { border-color: #198754; background: #f0fff4; }
+    .seat-btn.available:hover { background: #d1fae5; transform: scale(1.05); }
+    .seat-btn.suggested {
+      border-color: #f59e0b; background: #fffde7;
+      box-shadow: 0 0 0 3px rgba(245,158,11,.3);
+      animation: pulse-gold 1.6s ease-in-out infinite;
+    }
+    .seat-btn.selected  {
+      border-color: #0d6efd; background: #0d6efd; color: #fff;
+      box-shadow: 0 2px 8px rgba(13,110,253,.4);
+    }
+    .seat-btn.selected .seat-cap { color: rgba(255,255,255,.75); }
+    .seat-btn.occupied  { border-color: #dc3545; background: #fff5f5; opacity: .85; }
+    .seat-btn.blocked   { border-color: #f59e0b; background: #fffbe6; opacity: .85; cursor: pointer; }
+
+    @keyframes pulse-gold {
+      0%,100% { box-shadow: 0 0 0 3px rgba(245,158,11,.3); }
+      50%      { box-shadow: 0 0 0 6px rgba(245,158,11,.1); }
+    }
+
+    .zone-label { font-size: .72rem; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: .5px; }
+
+    .seat-legend {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: .7rem; border: 1.5px solid #dee2e6;
+    }
+    .seat-legend.available { border-color: #198754; background: #f0fff4; color: #198754; }
+    .seat-legend.suggested { border-color: #f59e0b; background: #fffde7; color: #92400e; }
+    .seat-legend.selected  { border-color: #0d6efd; background: #0d6efd; color: #fff; }
+    .seat-legend.occupied  { border-color: #dc3545; background: #fff5f5; color: #dc3545; }
+    .seat-legend.blocked   { border-color: #f59e0b; background: #fffbe6; color: #92400e; }
+
+    /* ============================================================
+       タイムテーブル
+    ============================================================ */
+    .tt-outer {
+      display: flex;
+      border: 1.5px solid #dee2e6;
+      border-radius: 10px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    /* 時刻軸 */
+    .tt-time-axis {
+      min-width: 52px; width: 52px;
+      border-right: 2px solid #dee2e6;
+      background: #f8f9fa;
+      flex-shrink: 0;
+    }
+    .tt-time-axis-head {
+      height: 48px; display:flex; align-items:center; justify-content:center;
+      font-size: .7rem; font-weight:700; color:#888;
+      border-bottom: 2px solid #dee2e6;
+      background: #1a1a1a; color: #aaa;
+    }
+    .tt-time-body { position: relative; }
+    .tt-time-label {
+      position: absolute; right: 6px;
+      font-size: .65rem; color: #999;
+      transform: translateY(-50%);
+      white-space: nowrap;
+    }
+    .tt-time-label.major { color: #555; font-weight: 700; }
+
+    /* テーブル列スクロール */
+    .tt-cols-scroll { flex: 1; overflow-x: auto; }
+    .tt-cols-inner  { position: relative; }
+
+    /* ヘッダー行 */
+    .tt-header-row {
+      display: flex;
+      position: sticky; top: 0; z-index: 20;
+      border-bottom: 2px solid var(--kirin-red);
+    }
+    .tt-col-head {
+      min-width: 100px; flex: 1;
+      background: #1a1a1a; color: #fff;
+      text-align: center; padding: 6px 4px;
+      border-right: 1px solid #333;
+      font-size: .78rem;
+    }
+    .tt-col-head.buffer { background: #3a3010; }
+
+    /* ボディ行 */
+    .tt-body-row { position: relative; touch-action: none; }
+
+    /* グリッド線 */
+    .tt-gridline {
+      position: absolute; left: 0;
+      border-top: 1px dashed #f0f0f0;
+      height: 0;
+    }
+    .tt-gridline.major { border-top: 1px solid #ddd; }
+
+    /* 現在時刻ライン */
+    .tt-now-line {
+      position: absolute; left: 0; height: 0;
+      border-top: 2.5px solid #e63946;
+      z-index: 15;
+    }
+    .tt-now-label {
+      position: absolute; left: 2px; top: -10px;
+      background: #e63946; color: #fff;
+      font-size: .6rem; font-weight: 700;
+      padding: 1px 5px; border-radius: 3px;
+    }
+
+    /* 予約ブロック */
+    .tt-res-block {
+      position: absolute;
+      border-radius: 6px;
+      padding: 4px 5px;
+      font-size: .7rem;
+      overflow: hidden;
+      cursor: grab;
+      z-index: 10;
+      transition: filter .15s;
+      box-shadow: 0 1px 4px rgba(0,0,0,.25);
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .tt-res-block:hover { filter: brightness(1.12); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+
+    /* 回転別カラー */
+    .tt-res-block.r1 { background: #4361ee; color: #fff; border-left: 4px solid #2946d4; }
+    .tt-res-block.r2 { background: #2ec4b6; color: #fff; border-left: 4px solid #1a9e92; }
+    .tt-res-block.r3 { background: #e63946; color: #fff; border-left: 4px solid #c1121f; }
+
+    /* 警告枠線（2段階） */
+    .tt-res-block.gap-danger  { box-shadow: 0 0 0 3px #e63946, 0 1px 4px rgba(0,0,0,.2); }
+    .tt-res-block.gap-caution { box-shadow: 0 0 0 2.5px #ffc107, 0 1px 4px rgba(0,0,0,.2); }
+    .tt-res-block.third-warn { animation: pulse-red 1.8s ease-in-out infinite; }
+    @keyframes pulse-red {
+      0%,100% { box-shadow: 0 0 0 2px rgba(230,57,70,.4); }
+      50%      { box-shadow: 0 0 0 5px rgba(230,57,70,.15); }
+    }
+
+    .tt-name { font-weight:700; font-size:.74rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .tt-info { font-size:.62rem; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    .rotation-badge {
+      display:inline-block; background:rgba(255,255,255,.25);
+      border-radius:3px; padding:0 4px; font-size:.58rem; white-space:nowrap;
+    }
+    .gap-badge {
+      display:inline-block; border-radius:3px;
+      padding:0 3px; font-size:.56rem; white-space:nowrap;
+    }
+    .gap-badge.danger  { background:#e63946; color:#fff; }
+    .gap-badge.caution { background:#ffc107; color:#1a1a1a; }
+
+    /* 凡例 */
+    .legend-chip {
+      display:inline-block; padding:3px 10px; border-radius:5px;
+      font-size:.74rem; font-weight:600; color:#fff;
+    }
+    .legend-chip.r1 { background:#4361ee; }
+    .legend-chip.r2 { background:#2ec4b6; }
+    .legend-chip.r3 { background:#e63946; }
+    .legend-chip.gap-danger  { background:#fff; color:#e63946; border:2px solid #e63946; }
+    .legend-chip.gap-caution { background:#fff; color:#856404; border:2px solid #ffc107; }
+    .legend-chip.now { background:#e63946; font-size:.7rem; }
+
+    /* ============================================================
+       印刷スタイル
+    ============================================================ */
+    .print-header { display: none; }
+
+    /* 分割印刷セクション（画面では非表示） */
+    .print-tt-section { display: none; }
+    .print-tt-title {
+      font-size: .88rem; font-weight: 700;
+      padding-bottom: 3px; margin-bottom: 6px;
+      border-bottom: 2px solid var(--kirin-red);
+    }
+    @media screen {
+      .print-tt-section { display: none !important; }
+    }
+
+    @media print {
+      body { background: #fff !important; }
+      .no-print { display: none !important; }
+      .navbar, .alert.alert-success { display: none !important; }
+      .print-header { display: block; text-align: center; margin-bottom: 12px; }
+      .tt-outer { border: 1px solid #999; }
+      .tt-res-block { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .tt-col-head  { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .tt-cols-scroll { overflow: visible !important; }
+      .tt-cols-inner  { min-width: 100% !important; }
+      .card { box-shadow: none !important; border: 1px solid #ccc !important; }
+      @page { size: A4 landscape; margin: 8mm; }
+
+      /* 分割印刷セクション */
+      [data-print-hide="1"] { display: none !important; }
+      .print-tt-section { display: block !important; }
+      .print-tt-section + .print-tt-section { page-break-before: always; break-before: page; }
+      .print-tt-section .tt-outer { zoom: 0.83; }
+      .print-tt-section .card { zoom: 0.88; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ナビバー -->
+<nav class="navbar navbar-dark">
+  <div class="container-fluid px-4">
+    <a class="navbar-brand" href="/">🍖 キリン屋 予約管理</a>
+    <div class="d-flex align-items-center gap-2 ms-auto">
+      <a href="/backup/csv" class="btn btn-sm btn-outline-light" title="CSVバックアップをダウンロード">
+        <i class="bi bi-download"></i>
+      </a>
+      <a href="/share" class="btn btn-sm btn-outline-light d-flex align-items-center gap-1"
+         title="タブレット接続情報">
+        <i class="bi bi-tablet"></i>
+        <span class="d-none d-sm-inline" style="font-size:.75rem">{{ local_ip }}</span>
+      </a>
+      <a href="/reservation/new" class="btn btn-sm btn-warning fw-bold">
+        <i class="bi bi-plus-lg"></i> 新規予約
+      </a>
+      {% if session.get('ok') %}
+      <a href="/logout" class="btn btn-sm btn-outline-secondary" title="ログアウト">
+        <i class="bi bi-box-arrow-right"></i>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+
+<!-- 同期通知トースト -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999; pointer-events:none">
+  <div id="syncToast" class="toast" role="alert" aria-live="polite" style="pointer-events:auto; min-width:260px">
+    <div class="toast-header" style="background:var(--kirin-red); color:#fff">
+      <i class="bi bi-arrow-repeat me-2"></i>
+      <strong class="me-auto">リアルタイム同期</strong>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+    </div>
+    <div class="toast-body fw-semibold" id="syncToastBody">予約が更新されました</div>
+  </div>
+</div>
+
+<div class="container-fluid px-4 py-3" style="max-width:1200px">
+
+  <!-- フラッシュメッセージ -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for cat, msg in messages %}
+    <div class="alert alert-{{ cat }} alert-dismissible fade show mb-3" role="alert">
+      {{ msg }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+
+<script>
+// ============================================================
+// リアルタイム同期ポーリング（全ページ共通）
+// ============================================================
+(function() {
+  let _syncTs    = '';
+  let _syncToast = null;
+  const INTERVAL = 4000; // 4秒ごとに確認
+
+  // フォーム編集中かどうか（自動リロードを抑制）
+  function _isFormPage() {
+    return /\/(new|edit)/.test(location.pathname);
+  }
+
+  function _getToast() {
+    if (!_syncToast) {
+      const el = document.getElementById('syncToast');
+      if (el) _syncToast = new bootstrap.Toast(el, { delay: 4000 });
+    }
+    return _syncToast;
+  }
+
+  function _showToast(msg, autoReload) {
+    const bodyEl = document.getElementById('syncToastBody');
+    if (bodyEl) bodyEl.textContent = msg;
+    const t = _getToast();
+    if (t) t.show();
+    if (autoReload) setTimeout(() => location.reload(), 2200);
+  }
+
+  async function _poll() {
+    try {
+      const r = await fetch('/api/last-change', { cache: 'no-store' });
+      const d = await r.json();
+      if (_syncTs && d.ts && d.ts !== _syncTs) {
+        // 変更を検知
+        if (_isFormPage()) {
+          _showToast('📡 他の端末で予約が変更されました', false);
+        } else {
+          _showToast('📡 予約が更新されました。画面を更新中…', true);
+        }
+      }
+      if (d.ts) _syncTs = d.ts;
+    } catch(e) { /* ネットワークエラーは無視 */ }
+    setTimeout(_poll, INTERVAL);
+  }
+
+  // 初回: 現在のTSを取得してからポーリング開始（自分の操作で誤検知しない）
+  fetch('/api/last-change', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(d => { _syncTs = d.ts || ''; setTimeout(_poll, INTERVAL); })
+    .catch(() => { setTimeout(_poll, INTERVAL); });
+})();
+</script>
+</body>
+</html>

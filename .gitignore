@@ -1,0 +1,11 @@
+*.db
+*.db-shm
+*.db-wal
+last_change.txt
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+venv/
+.venv/

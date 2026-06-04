@@ -1,0 +1,1120 @@
+{% extends "base.html" %}
+{% block title %}タイムテーブル {{ date_display }}{% endblock %}
+
+{% block content %}
+
+<!-- ===== ヘッダー ===== -->
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap no-print">
+  <a href="/?date={{ target_date }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-list-ul me-1"></i>一覧
+  </a>
+  <a href="/timetable?date={{ prev_date }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-chevron-left"></i>
+  </a>
+  <h5 class="mb-0 mx-1">{{ date_display }} タイムテーブル</h5>
+  {% if target_date == today %}
+    <span class="badge bg-success">本日</span>
+  {% endif %}
+  <a href="/timetable?date={{ next_date }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-chevron-right"></i>
+  </a>
+  <input type="date" class="form-control form-control-sm ms-1" style="width:150px"
+         value="{{ target_date }}" onchange="location.href='/timetable?date='+this.value">
+  <a href="/reservation/new?date={{ target_date }}" class="btn btn-kirin btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>新規予約
+  </a>
+  <a href="/timetable/print?date={{ target_date }}" target="_blank"
+     class="btn btn-outline-dark btn-sm ms-auto">
+    <i class="bi bi-printer me-1"></i>印刷
+  </a>
+</div>
+
+<!-- ===== 印刷ヘッダー（印刷時のみ表示） ===== -->
+<div class="print-header">
+  <h4>🍖 キリン屋 予約タイムテーブル</h4>
+  <p>{{ date_display }}　合計 {{ reservations|length }} 組 / {{ reservations|sum(attribute='total_people') }} 名</p>
+</div>
+
+<!-- ===== 警告バナー ===== -->
+{% if warnings %}
+<div class="alert mb-3" style="border:2px solid #e63946; background:#fff5f5">
+  <div class="fw-bold mb-1" style="color:#e63946">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>回転注意アラート
+  </div>
+  {% for w in warnings %}
+  <div class="small d-flex align-items-center gap-2 mb-1">
+    {% if w.type == '3rd' %}
+      <span class="badge bg-danger">3回転目</span>
+    {% elif w.type == 'danger' %}
+      <span class="badge bg-danger">🔴 間隔15分未満</span>
+    {% elif w.type == 'caution' %}
+      <span class="badge bg-warning text-dark">🟡 間隔15〜30分</span>
+    {% endif %}
+    {{ w.msg }}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-success mb-3 no-print" style="border:1px solid #2ec4b6">
+  <i class="bi bi-check-circle-fill me-2"></i>回転に関する警告はありません
+</div>
+{% endif %}
+
+<!-- ===== 凡例 ===== -->
+<div class="d-flex gap-3 mb-3 align-items-center flex-wrap" style="font-size:.78rem">
+  <strong class="text-muted">凡例:</strong>
+  <span class="legend-chip r1">1回転目</span>
+  <span class="legend-chip r2">2回転目</span>
+  <span class="legend-chip r3">3回転目 ⚠️</span>
+  <span class="legend-chip gap-danger">🔴 間隔15分未満</span>
+  <span class="legend-chip gap-caution">🟡 間隔15〜30分</span>
+  {% if target_date == today %}
+  <span class="legend-chip now">▶ 現在時刻</span>
+  {% endif %}
+  <span class="text-muted ms-auto">合計 {{ reservations|length }}組 ／ {{ reservations|sum(attribute='total_people') }}名</span>
+</div>
+
+<!-- ===== タイムテーブル本体 ===== -->
+<div class="tt-outer">
+
+  <!-- 時刻軸（左） -->
+  <div class="tt-time-axis" style="height:{{ total_height + 48 }}px">
+    <div class="tt-time-axis-head">時刻</div>
+    <div class="tt-time-body" style="height:{{ total_height }}px; position:relative">
+      {% for lbl in time_labels %}
+      <div class="tt-time-label {{ 'major' if lbl.is_hour else '' }}"
+           style="top:{{ lbl.top_px }}px">{{ lbl.label }}</div>
+      {% endfor %}
+
+      <!-- インターバルゾーン（時刻軸） -->
+      <div style="position:absolute; left:0; right:0;
+                  top:{{ break_start_px }}px; height:{{ break_end_px - break_start_px }}px;
+                  background:rgba(0,0,0,.08); z-index:2; pointer-events:none"></div>
+
+      <!-- スケジュールマーカー（時刻軸：左端カラータブ） -->
+      {% for sm in schedule_markers %}
+      <div style="position:absolute; left:0; top:{{ sm.top_px }}px;
+                  transform:translateY(-50%); z-index:4; pointer-events:none;
+                  width:4px; height:14px; background:{{ sm.color }};
+                  border-radius:0 2px 2px 0;"></div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- テーブル列エリア（横スクロール） -->
+  <div class="tt-cols-scroll">
+    <div class="tt-cols-inner" style="min-width:{{ tables|length * 100 }}px">
+
+      <!-- テーブルヘッダー行 -->
+      <div class="tt-header-row">
+        {% for t_id, info in tables.items() %}
+        <div class="tt-col-head {% if info.is_buffer %}buffer{% endif %}">
+          <div class="fw-bold">{{ t_id }}番</div>
+          <div style="font-size:.62rem; opacity:.75">{{ info.capacity }}席</div>
+          <div style="font-size:.58rem; opacity:.6">{{ info.zone[:4] }}</div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- テーブル列 -->
+      <div class="tt-body-row" style="height:{{ total_height }}px; position:relative">
+
+        <!-- グリッド線 -->
+        {% for gl in grid_lines %}
+        <div class="tt-gridline {{ 'major' if gl.is_hour else '' }}"
+             style="top:{{ gl.top_px }}px; width:{{ tables|length * 100 }}px"></div>
+        {% endfor %}
+
+        <!-- 現在時刻ライン（本日のみ） -->
+        {% if target_date == today %}
+        <div class="tt-now-line" id="nowLine" style="width:{{ tables|length * 100 }}px">
+          <span class="tt-now-label">NOW</span>
+        </div>
+        {% endif %}
+
+        <!-- インターバルゾーン（準備中） -->
+        <div style="position:absolute; left:0; top:{{ break_start_px }}px;
+                    height:{{ break_end_px - break_start_px }}px;
+                    width:{{ tables|length * 100 }}px; z-index:5; pointer-events:none;
+                    background:repeating-linear-gradient(45deg,
+                      rgba(0,0,0,.04) 0, rgba(0,0,0,.04) 5px,
+                      rgba(255,255,255,.5) 5px, rgba(255,255,255,.5) 10px);
+                    border-top:2px solid #e63946; border-bottom:2px solid #2ec4b6;">
+          <span style="position:absolute; top:2px; left:4px;
+                       font-size:.6rem; font-weight:700; color:#fff;
+                       background:#e63946; padding:1px 6px;
+                       border-radius:3px; white-space:nowrap">
+            ランチ閉店 14:00
+          </span>
+          <span style="position:absolute; top:50%; left:50%;
+                       transform:translate(-50%,-50%);
+                       font-size:.62rem; color:#aaa; font-weight:600;
+                       background:rgba(255,255,255,.92); padding:1px 8px;
+                       border-radius:8px; white-space:nowrap">
+            準備中
+          </span>
+          <span style="position:absolute; bottom:2px; left:4px;
+                       font-size:.6rem; font-weight:700; color:#fff;
+                       background:#2ec4b6; padding:1px 6px;
+                       border-radius:3px; white-space:nowrap">
+            ディナー開店 17:00
+          </span>
+        </div>
+
+        <!-- ディナー開始テーブル番号行（準備中ゾーンの下端・17:00直前） -->
+        <div style="position:absolute; top:{{ break_end_px - 34 }}px; left:0; z-index:16; pointer-events:none;
+                    display:flex; width:{{ tables|length * 100 }}px; height:34px;
+                    background:#fff; border-top:2px solid #2ec4b6; border-bottom:2px solid #2ec4b6;
+                    box-shadow:0 2px 6px rgba(0,0,0,.10);">
+          {% for t_id, info in tables.items() %}
+          <div style="width:100px; text-align:center; font-size:.75rem; font-weight:700;
+                      color:#0e5c57; border-right:1px solid #dee2e6;
+                      display:flex; flex-direction:column; align-items:center; justify-content:center;
+                      line-height:1.2">
+            <span>{{ t_id }}番</span>
+            <span style="font-size:.58rem; font-weight:400; opacity:.65">{{ info.capacity }}席</span>
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- スケジュールマーカーライン -->
+        {% for sm in schedule_markers %}
+        <div style="position:absolute; left:0; top:{{ sm.top_px }}px;
+                    height:0; width:{{ tables|length * 100 }}px; z-index:12; pointer-events:none;
+                    border-top:2.5px {{ 'dashed' if sm.dashed else 'solid' }} {{ sm.color }}">
+          <span style="position:absolute; left:3px; {{ 'top:2px' if sm.below else 'top:-11px' }};
+                       font-size:.6rem; font-weight:700; padding:1px 5px; border-radius:3px;
+                       color:#fff; background:{{ sm.color }}; white-space:nowrap; line-height:1.4">
+            {{ sm.label }}
+          </span>
+        </div>
+        {% endfor %}
+
+        <!-- 各テーブルの予約ブロック -->
+        {% for t_id, info in tables.items() %}
+        {% set col_left = loop.index0 * 100 %}
+        {% set rotations = table_data.get(t_id, []) %}
+
+        <!-- 列背景（バッファ席はうっすら黄色） -->
+        {% if info.is_buffer %}
+        <div style="position:absolute; left:{{ col_left }}px; width:98px; top:0; bottom:0;
+                    background:rgba(255,193,7,.06); border-right:1px solid #e0e0e0;"></div>
+        {% endif %}
+
+        {% for res in rotations %}
+        <!-- 回転ブロック -->
+        <div class="tt-res-block r{{ res.rotation_num }}
+             {% if res.gap_danger %}gap-danger{% elif res.gap_caution %}gap-caution{% endif %}
+             {% if res.warn_3rd %}third-warn{% endif %}"
+             style="left:{{ col_left + 2 }}px; top:{{ res.top_px }}px;
+                    height:{{ res.height_px }}px; width:93px"
+             data-rid="{{ res.id }}"
+             title="{{ res.name }} 様 {{ res.total_people }}名 {{ res.time_slot }}〜{% if res.notes %} | 📝 {{ res.notes }}{% endif %}">
+
+          <!-- 回転バッジ & ギャップ表示 -->
+          <div class="d-flex align-items-center gap-1 mb-1" style="flex-wrap:nowrap">
+            <span class="rotation-badge">{{ res.rotation_num }}回転</span>
+            {% if res.gap_danger %}
+            <span class="gap-badge danger" title="危険：前回転との間隔 {{ res.gap_min }}分（15分未満）">
+              🔴 {{ res.gap_min }}分
+            </span>
+          {% elif res.gap_caution %}
+            <span class="gap-badge caution" title="注意：前回転との間隔 {{ res.gap_min }}分（15〜30分）">
+              🟡 {{ res.gap_min }}分
+            </span>
+          {% endif %}
+            {% if res.warn_3rd %}
+            <span class="gap-badge" style="background:#e63946">🔴 注意</span>
+            {% endif %}
+          </div>
+
+          <div class="tt-name">
+            {{ res.name }}
+            {% if res.notes %}<span style="font-size:.65rem; opacity:.85">📝</span>{% endif %}
+          </div>
+          <div class="tt-info">
+            {{ res.total_people }}名 | {{ res.time_slot }}〜
+          </div>
+          {% if res.height_px >= 80 %}
+          <div class="tt-info">
+            {{ res.duration_minutes // 60 }}h{{ '%02d'|format(res.duration_minutes % 60) }}m
+            {% if res.is_vip %}<span class="ms-1">⭐</span>{% endif %}
+            {% if res.is_group %}<span class="ms-1">👥</span>{% endif %}
+          </div>
+          {% endif %}
+          {% if res.notes and res.height_px >= 120 %}
+          <div class="tt-info mt-1"
+               style="border-top:1px solid rgba(255,255,255,.25); padding-top:3px; white-space:normal; line-height:1.3">
+            📝 {{ res.notes[:28] }}{% if res.notes|length > 28 %}…{% endif %}
+          </div>
+          {% endif %}
+
+        </div>
+        {% endfor %}
+
+        <!-- 列区切り線 -->
+        <div style="position:absolute; left:{{ col_left + 98 }}px; top:0; bottom:0;
+                    border-right:1px solid #dee2e6;"></div>
+        {% endfor %}
+
+      </div><!-- /tt-body-row -->
+    </div><!-- /tt-cols-inner -->
+  </div><!-- /tt-cols-scroll -->
+
+</div><!-- /tt-outer -->
+
+<!-- ===== 回転サマリー表 ===== -->
+<div class="card mt-4">
+  <div class="card-header py-2">
+    <i class="bi bi-table me-2 text-danger"></i>回転サマリー
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered mb-0" style="font-size:.82rem">
+      <thead class="table-dark">
+        <tr>
+          <th>テーブル</th>
+          <th>収容</th>
+          {% for n in [1,2,3] %}
+          <th class="text-center">{{ n }}回転目</th>
+          {% endfor %}
+          <th>状態</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t_id, info in tables.items() %}
+        {% set rots = table_data.get(t_id, []) %}
+        {% if rots %}
+        <tr class="{{ 'table-danger' if rots|selectattr('warn_3rd')|list else '' }}">
+          <td class="fw-bold">{{ t_id }}番</td>
+          <td class="text-center text-muted">{{ info.capacity }}席</td>
+          {% for n in [1,2,3] %}
+          {% set rot = rots | selectattr('rotation_num','equalto',n) | list %}
+          <td class="text-center">
+            {% if rot %}
+              <span style="font-size:.75rem">
+                {{ rot[0].time_slot }}〜<br>
+                <strong>{{ rot[0].name }}</strong><br>
+                {{ rot[0].total_people }}名
+              </span>
+              {% if rot[0].gap_danger %}
+              <span class="badge bg-danger d-block mt-1">🔴 {{ rot[0].gap_min }}分（15分未満）</span>
+              {% elif rot[0].gap_caution %}
+              <span class="badge bg-warning text-dark d-block mt-1">🟡 {{ rot[0].gap_min }}分（15〜30分）</span>
+              {% endif %}
+              {% if rot[0].notes %}
+              <div class="mt-1" style="font-size:.68rem; color:#555; text-align:left; white-space:pre-wrap">
+                📝 {{ rot[0].notes[:40] }}{% if rot[0].notes|length > 40 %}…{% endif %}
+              </div>
+              {% endif %}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td>
+            {% if rots | selectattr('warn_3rd') | list %}
+              <span class="badge bg-danger">⚠️ 3回転</span>
+            {% elif rots | selectattr('gap_danger') | list %}
+              <span class="badge bg-danger">🔴 間隔15分未満</span>
+            {% elif rots | selectattr('gap_caution') | list %}
+              <span class="badge bg-warning text-dark">🟡 間隔15〜30分</span>
+            {% elif rots|length == 2 %}
+              <span class="badge bg-success">2回転</span>
+            {% else %}
+              <span class="badge bg-secondary">1回転</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+        {% if not reservations %}
+        <tr><td colspan="6" class="text-center text-muted py-3">この日の予約はありません</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== クイック操作モーダル ===== -->
+<div class="modal fade" id="quickModal" tabindex="-1" aria-labelledby="quickModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:480px">
+    <div class="modal-content">
+
+      <div class="modal-header py-2" style="background:var(--kirin-dark); color:#fff; border-radius:12px 12px 0 0">
+        <h6 class="modal-title mb-0" id="quickModalLabel">
+          <i class="bi bi-lightning-fill text-warning me-2"></i>クイック操作
+        </h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body px-4 py-3">
+
+        <!-- 予約情報 -->
+        <div id="qm-info" class="mb-3 p-3 rounded"
+             style="background:#f7f4f0; border-left:4px solid var(--kirin-red)"></div>
+
+        <!-- 時間変更 -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-clock me-1 text-danger"></i>時間変更
+          </label>
+          <select id="qm-time" class="form-select form-select-sm" onchange="qmCheckSeats()"></select>
+        </div>
+
+        <!-- 席変更 -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-grid-3x2-gap me-1 text-danger"></i>席の変更
+            <span class="text-muted fw-normal ms-1" style="font-size:.7rem">（クリックで選択・解除）</span>
+          </label>
+          <div id="qm-seats" class="d-flex gap-2 flex-wrap mb-2"></div>
+          <div id="qm-seat-label" class="small text-muted"></div>
+        </div>
+
+        <!-- 備考 -->
+        <div id="qm-notes" class="d-none"></div>
+
+      </div>
+
+      <div class="modal-footer py-2 gap-2">
+        <a id="qm-edit-link" href="#" class="btn btn-outline-primary btn-sm me-auto">
+          <i class="bi bi-pencil me-1"></i>フル編集
+        </a>
+        <button type="button" class="btn btn-outline-danger btn-sm" onclick="qmCancel()">
+          <i class="bi bi-x-circle me-1"></i>キャンセル
+        </button>
+        <button type="button" class="btn btn-kirin btn-sm px-4" onclick="qmSave()">
+          <i class="bi bi-save me-1"></i>保存
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ===== クイック追加モーダル ===== -->
+<div class="modal fade" id="addModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:440px">
+    <div class="modal-content">
+
+      <div class="modal-header py-2" style="background:var(--kirin-dark); color:#fff; border-radius:12px 12px 0 0">
+        <h6 class="modal-title mb-0">
+          <i class="bi bi-plus-circle-fill text-warning me-2"></i>クイック予約追加
+        </h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body px-4 py-3">
+
+        <div class="mb-3 p-2 rounded" style="background:#f7f4f0; border-left:4px solid var(--kirin-gold)">
+          <div class="small text-muted">
+            <i class="bi bi-calendar3 me-1"></i>{{ date_display }}
+            <span id="am-table-label" class="ms-2 fw-semibold text-dark"></span>
+          </div>
+        </div>
+
+        <div class="row g-2 mb-2">
+          <div class="col">
+            <label class="form-label fw-semibold small">
+              <i class="bi bi-clock me-1 text-danger"></i>時間 <span class="text-danger">*</span>
+            </label>
+            <select id="am-time" class="form-select form-select-sm"></select>
+          </div>
+          <div class="col">
+            <label class="form-label fw-semibold small">
+              <i class="bi bi-hourglass me-1 text-danger"></i>利用時間
+            </label>
+            <select id="am-duration" class="form-select form-select-sm">
+              <option value="90">1h30m</option>
+              <option value="105" selected>1h45m（標準）</option>
+              <option value="120">2h</option>
+              <option value="150">2h30m</option>
+              <option value="180">3h</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-person me-1 text-danger"></i>お名前 <span class="text-danger">*</span>
+          </label>
+          <input id="am-name" type="text" class="form-control form-control-sm"
+                 placeholder="山田 太郎" autocomplete="off">
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-telephone me-1 text-danger"></i>電話番号
+            <span class="text-muted fw-normal" style="font-size:.68rem">（省略可）</span>
+          </label>
+          <input id="am-phone" type="tel" class="form-control form-control-sm"
+                 placeholder="090-XXXX-XXXX" autocomplete="off">
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-people me-1 text-danger"></i>人数（大人）
+          </label>
+          <input id="am-adults" type="number" class="form-control form-control-sm"
+                 value="2" min="1" max="30">
+        </div>
+
+        <div class="mb-1">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-chat-left-text me-1 text-danger"></i>備考
+          </label>
+          <textarea id="am-notes" class="form-control form-control-sm" rows="2"
+                    placeholder="アレルギー・希望など"></textarea>
+        </div>
+
+      </div>
+
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm"
+                data-bs-dismiss="modal">閉じる</button>
+        <a id="am-full-link" href="#" class="btn btn-outline-primary btn-sm">
+          <i class="bi bi-pencil me-1"></i>詳細入力
+        </a>
+        <button type="button" class="btn btn-kirin btn-sm px-4"
+                id="am-save-btn" onclick="addSave()">
+          <i class="bi bi-check-lg me-1"></i>登録
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+{% if target_date == today %}
+// 現在時刻ライン（インターバル圧縮対応）
+(function updateNowLine() {
+  const openHour       = {{ open_hour }};
+  const pxPerMin       = {{ px_per_min }};
+  const lunchEndMin    = {{ lunch_end_min }};
+  const dinnerStartMin = {{ dinner_start_min }};
+  const breakStartPx   = {{ break_start_px }};
+  const breakEndPx     = {{ break_end_px }};
+
+  function minToPx(m) {
+    if (m <= lunchEndMin)    return m * pxPerMin;
+    if (m <= dinnerStartMin) return breakStartPx + ((m - lunchEndMin) / (dinnerStartMin - lunchEndMin)) * (breakEndPx - breakStartPx);
+    return breakEndPx + (m - dinnerStartMin) * pxPerMin;
+  }
+
+  const now  = new Date();
+  const mins = (now.getHours() - openHour) * 60 + now.getMinutes();
+  const line = document.getElementById('nowLine');
+  if (line) {
+    if (mins < 0 || mins > {{ total_minutes }}) {
+      line.style.display = 'none';
+    } else {
+      line.style.top = minToPx(mins) + 'px';
+    }
+  }
+  setTimeout(updateNowLine, 60000);
+})();
+const CLOSE_HOUR = 22;
+{% endif %}
+
+// ============================================================
+// クイック操作モーダル
+// ============================================================
+const QM_TARGET_DATE = '{{ target_date }}';
+const QM_TABLE_INFO  = {
+  1:{cap:6,zone:'メイン'},  2:{cap:6,zone:'メイン'},  3:{cap:6,zone:'メイン'},
+  4:{cap:6,zone:'メイン'},  5:{cap:6,zone:'メイン'},  6:{cap:4,zone:'サイドA'},
+  7:{cap:4,zone:'サイドA'}, 8:{cap:4,zone:'サイドB'}, 9:{cap:4,zone:'サイドB'},
+  10:{cap:6,zone:'VIP'},   11:{cap:8,zone:'VIP'},
+};
+
+let _qmResId   = null;
+let _qmRes     = null;
+let _qmSel     = [];   // 選択中テーブルID[]
+let _qmOcc     = [];   // 使用中
+let _qmBlk     = [];   // ブロック
+let _qmModal   = null;
+
+async function openQuickModal(rid) {
+  _qmResId = rid;
+
+  // 予約データ取得
+  const r = await fetch(`/api/reservation/${rid}`);
+  _qmRes  = await r.json();
+
+  // モーダル内容を組み立て
+  _buildQmInfo();
+  _buildQmTimeSelect();
+  _qmSel = (Array.isArray(_qmRes.assigned_tables)
+    ? _qmRes.assigned_tables
+    : JSON.parse(_qmRes.assigned_tables || '[]')
+  ).map(Number);
+  document.getElementById('qm-edit-link').href = `/reservation/${rid}/edit`;
+
+  // 備考
+  const notesEl = document.getElementById('qm-notes');
+  if (_qmRes.notes) {
+    notesEl.classList.remove('d-none');
+    notesEl.innerHTML =
+      `<div class="p-2 rounded small mb-2" style="background:#fffbe6; border:1px solid #ffe082">
+         <span class="text-muted">📝 備考：</span>${_escHtml(_qmRes.notes)}
+       </div>`;
+  } else {
+    notesEl.classList.add('d-none');
+  }
+
+  // 席マップを取得して描画
+  await qmCheckSeats();
+
+  // モーダルを開く
+  if (!_qmModal) _qmModal = new bootstrap.Modal(document.getElementById('quickModal'));
+  _qmModal.show();
+}
+
+function _buildQmInfo() {
+  const res   = _qmRes;
+  const badges = [
+    res.is_vip   ? '<span class="badge badge-vip">⭐ VIP</span>'    : '',
+    res.is_group ? '<span class="badge badge-group text-white">👥 団体</span>' : '',
+    res.private_room ? '<span class="badge badge-priv">🚪 個室</span>' : '',
+  ].join(' ');
+  const tables = (Array.isArray(res.assigned_tables) ? res.assigned_tables : JSON.parse(res.assigned_tables||'[]'))
+    .map(t => `<span class="badge bg-secondary">${t}番</span>`).join(' ');
+  document.getElementById('qm-info').innerHTML = `
+    <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+      <span class="badge-time">${res.time_slot}</span>
+      <strong class="fs-5">${_escHtml(res.name)} 様</strong>
+      ${badges}
+    </div>
+    <div class="text-muted small">
+      ${res.total_people}名（大人${res.adults}名）　${res.duration_minutes}分　${tables || '席未定'}
+    </div>`;
+}
+
+function _buildQmTimeSelect() {
+  const sel = document.getElementById('qm-time');
+  sel.innerHTML = '';
+  for (let h = 11; h <= 22; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      if (h === 22 && m > 0) break;
+      const val = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = val;
+      if (val === _qmRes.time_slot) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+}
+
+async function qmCheckSeats() {
+  const timeSlot = document.getElementById('qm-time').value;
+  if (!timeSlot || !_qmRes) return;
+  try {
+    const r = await fetch('/api/check', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        date: QM_TARGET_DATE,
+        time_slot: timeSlot,
+        total_people: _qmRes.total_people,
+        duration_minutes: _qmRes.duration_minutes,
+        edit_id: _qmResId,
+      }),
+    });
+    const data = await r.json();
+    _qmOcc = (data.seat_map?.occupied || []).map(Number);
+    _qmBlk = (data.seat_map?.blocked  || []).map(Number).filter(t => !_qmOcc.includes(t));
+  } catch(e) { _qmOcc = []; _qmBlk = []; }
+  _renderQmSeats();
+}
+
+function _renderQmSeats() {
+  const container = document.getElementById('qm-seats');
+  container.innerHTML = '';
+  for (let t = 1; t <= 11; t++) {
+    const info  = QM_TABLE_INFO[t];
+    const isSel = _qmSel.includes(t);
+    const isOcc = _qmOcc.includes(t);
+    const isBlk = _qmBlk.includes(t);
+
+    let cls = 'btn btn-sm ';
+    if      (isSel) cls += 'btn-primary';
+    else if (isOcc) cls += 'btn-outline-danger';
+    else if (isBlk) cls += 'btn-outline-warning';
+    else            cls += 'btn-outline-success';
+
+    const btn = document.createElement('button');
+    btn.type      = 'button';
+    btn.className = cls;
+    btn.style.cssText = 'min-width:54px; padding:4px 5px; font-size:.72rem';
+    btn.title     = isOcc ? '使用中（OKで強制選択）' : isBlk ? '隣接ブロック（OKで強制選択）' : `${info.cap}席・${info.zone}`;
+    btn.innerHTML = `<div class="fw-bold">${t}番</div><div style="font-size:.6rem">${info.cap}席</div>`;
+    btn.onclick   = () => _qmToggle(t, isOcc, isBlk);
+    container.appendChild(btn);
+  }
+  _updateQmLabel();
+}
+
+function _qmToggle(t, isOcc, isBlk) {
+  if (isOcc && !confirm(`${t}番は現在使用中です。\n強制的に選択しますか？`)) return;
+  if (isBlk && !confirm(`${t}番は団体予約の隣接ブロック席です。\nスタッフ判断で選択しますか？`)) return;
+  const idx = _qmSel.indexOf(t);
+  if (idx >= 0) _qmSel.splice(idx, 1);
+  else { _qmSel.push(t); _qmSel.sort((a,b)=>a-b); }
+  _renderQmSeats();
+}
+
+function _updateQmLabel() {
+  const el = document.getElementById('qm-seat-label');
+  if (_qmSel.length > 0) {
+    el.innerHTML = `<span class="text-primary fw-semibold">✅ 確定: ${_qmSel.map(t=>`${t}番`).join('・')}</span>`;
+  } else {
+    el.textContent = '席未選択';
+  }
+}
+
+async function qmSave() {
+  const timeSlot = document.getElementById('qm-time').value;
+  const btn = document.querySelector('#quickModal .btn-kirin');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>保存中…';
+  try {
+    const r = await fetch(`/api/reservation/${_qmResId}/quick-edit`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ time_slot: timeSlot, assigned_tables: _qmSel }),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      location.reload();
+    } else {
+      alert('エラー: ' + (data.error || '保存に失敗しました'));
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-save me-1"></i>保存';
+    }
+  } catch(e) {
+    alert('通信エラーが発生しました');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-save me-1"></i>保存';
+  }
+}
+
+async function qmCancel() {
+  if (!_qmRes) return;
+  if (!confirm(`${_qmRes.name} 様の予約をキャンセルしますか？\nこの操作は取り消せません。`)) return;
+  try {
+    const r = await fetch(`/api/reservation/${_qmResId}/quick-edit`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ action: 'cancel' }),
+    });
+    const data = await r.json();
+    if (data.ok) location.reload();
+    else alert('エラー: ' + (data.error || '失敗しました'));
+  } catch(e) { alert('通信エラー'); }
+}
+
+function _escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ============================================================
+// 分割印刷（ランチ・ディナー・回転サマリー 各1ページ）
+// ============================================================
+const _PT = {
+  breakStart : {{ break_start_px }},
+  breakEnd   : {{ break_end_px }},
+  totalH     : {{ total_height }},
+  dateStr    : '{{ date_display }}',
+};
+let _ptNodes = [];
+
+function _clipTT(tt, startPx, endPx) {
+  const h = endPx - startPx;
+
+  // ヘッダーのsticky解除（印刷では固定不要）
+  const hdr = tt.querySelector('.tt-header-row');
+  if (hdr) hdr.style.position = 'relative';
+
+  // 時刻軸をクリップ（position:absoluteでoffset）
+  const timeAxis = tt.querySelector('.tt-time-axis');
+  const timeBody = tt.querySelector('.tt-time-body');
+  timeAxis.style.height = (h + 48) + 'px';
+  const timeClip = document.createElement('div');
+  timeClip.style.cssText = `height:${h}px;overflow:hidden;position:relative;`;
+  // position:relativeをabsoluteに変えてtopでオフセット
+  timeBody.style.cssText = timeBody.style.cssText
+    + `;position:absolute;top:-${startPx}px;left:0;right:0;`;
+  timeBody.replaceWith(timeClip);
+  timeClip.appendChild(timeBody);
+
+  // テーブル列ボディをクリップ
+  const bodyRow = tt.querySelector('.tt-body-row');
+  const bodyClip = document.createElement('div');
+  bodyClip.style.cssText = `height:${h}px;overflow:hidden;position:relative;`;
+  // bodyRowの子要素はposition:absoluteでbodyRow基準なので、bodyRowをabsoluteでオフセット
+  bodyRow.style.cssText = bodyRow.style.cssText
+    + `;position:absolute;top:-${startPx}px;left:0;right:0;`;
+  bodyRow.replaceWith(bodyClip);
+  bodyClip.appendChild(bodyRow);
+}
+
+function _makeSection(title, el) {
+  const wrap = document.createElement('div');
+  wrap.className = 'print-tt-section';
+  const ttl = document.createElement('div');
+  ttl.className = 'print-tt-title';
+  ttl.textContent = title;
+  wrap.appendChild(ttl);
+  wrap.appendChild(el);
+  return wrap;
+}
+
+function _setupPrint() {
+  const src = document.querySelector('.tt-outer');
+  const sum = document.querySelector('.card.mt-4');
+  if (!src || !sum) return;
+
+  // 元の要素を印刷時に非表示
+  [src, sum, document.querySelector('.print-header')].forEach(el => {
+    if (el) el.dataset.printHide = '1';
+  });
+
+  // ランチ（0〜break_start_px）
+  const lTT = src.cloneNode(true);
+  lTT.querySelector('#nowLine')?.remove();
+  _clipTT(lTT, 0, _PT.breakStart);
+  const lSec = _makeSection(_PT.dateStr + '　ランチ タイムテーブル（11:30〜14:00）', lTT);
+
+  // ディナー（break_end_px〜total_height）
+  const dTT = src.cloneNode(true);
+  dTT.querySelector('#nowLine')?.remove();
+  _clipTT(dTT, _PT.breakEnd, _PT.totalH);
+  const dSec = _makeSection(_PT.dateStr + '　ディナー タイムテーブル（17:00〜23:00）', dTT);
+
+  // 回転サマリー
+  const sSec = _makeSection(_PT.dateStr + '　回転サマリー', sum.cloneNode(true));
+
+  const container = src.closest('.container-fluid');
+  [lSec, dSec, sSec].forEach(s => container.insertBefore(s, src));
+  _ptNodes = [lSec, dSec, sSec];
+}
+
+function _teardownPrint() {
+  _ptNodes.forEach(n => n.remove());
+  _ptNodes = [];
+  document.querySelectorAll('[data-print-hide]').forEach(el => delete el.dataset.printHide);
+}
+
+function doPrint() {
+  _setupPrint();
+  // ブラウザがDOMを再レイアウトするのを待ってから印刷ダイアログを開く
+  requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
+}
+
+window.addEventListener('afterprint', _teardownPrint);
+
+// ============================================================
+// D&D + クリック追加: 共通定数・ヘルパー
+// ============================================================
+const TT_OPEN_HOUR      = {{ open_hour }};
+const TT_PX_PER_MIN     = {{ px_per_min }};
+const TT_BREAK_START_PX = {{ break_start_px }};
+const TT_BREAK_END_PX   = {{ break_end_px }};
+const TT_LUNCH_END_MIN  = {{ lunch_end_min }};
+const TT_DINNER_START   = {{ dinner_start_min }};
+const TT_TOTAL_MIN      = {{ total_minutes }};
+const TT_TABLES         = [{% for t_id in tables.keys() %}{{ t_id }},{% endfor %}];
+
+function ttPxToMin(px) {
+    if (px <= TT_BREAK_START_PX)
+        return px / TT_PX_PER_MIN;
+    if (px <= TT_BREAK_END_PX)
+        return TT_LUNCH_END_MIN
+            + (px - TT_BREAK_START_PX) / (TT_BREAK_END_PX - TT_BREAK_START_PX)
+            * (TT_DINNER_START - TT_LUNCH_END_MIN);
+    return TT_DINNER_START + (px - TT_BREAK_END_PX) / TT_PX_PER_MIN;
+}
+
+function ttMinToPx(m) {
+    if (m <= TT_LUNCH_END_MIN)  return m * TT_PX_PER_MIN;
+    if (m <= TT_DINNER_START)
+        return TT_BREAK_START_PX
+            + (m - TT_LUNCH_END_MIN) / (TT_DINNER_START - TT_LUNCH_END_MIN)
+            * (TT_BREAK_END_PX - TT_BREAK_START_PX);
+    return TT_BREAK_END_PX + (m - TT_DINNER_START) * TT_PX_PER_MIN;
+}
+
+function ttMinToSlot(m) {
+    m = Math.round(m / 15) * 15;
+    m = Math.max(30, Math.min(m, TT_TOTAL_MIN - 15)); // 11:30〜22:45
+    const h  = TT_OPEN_HOUR + Math.floor(m / 60);
+    const mn = m % 60;
+    return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`;
+}
+
+// ============================================================
+// ドラッグ＆ドロップ
+// ============================================================
+let _dd = null;
+
+const _bodyRow   = document.querySelector('.tt-body-row');
+const _colScroll = document.querySelector('.tt-cols-scroll');
+
+// カーソル設定
+_bodyRow.style.cursor = 'crosshair';
+document.querySelectorAll('.tt-res-block').forEach(b => { b.style.cursor = 'grab'; });
+
+_bodyRow.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const block = e.target.closest('.tt-res-block');
+    if (block) {
+        e.preventDefault();
+        _ddStart(e, block);
+    } else {
+        _addStart(e);
+    }
+});
+
+function _ddStart(e, block) {
+    block.setPointerCapture(e.pointerId);
+    const rid      = parseInt(block.dataset.rid);
+    const origTop  = parseInt(block.style.top);
+    const origLeft = parseInt(block.style.left);
+    const bRect    = block.getBoundingClientRect();
+    const offX     = e.clientX - bRect.left;
+    const offY     = e.clientY - bRect.top;
+
+    // ゴースト作成
+    const ghost = document.createElement('div');
+    ghost.className = block.className;
+    ghost.innerHTML = block.innerHTML;
+    ghost.style.cssText = block.style.cssText
+        + ';pointer-events:none;z-index:200;opacity:0.82;cursor:grabbing;'
+        + 'box-shadow:0 8px 32px rgba(0,0,0,.55);'
+        + 'border:2px dashed rgba(255,255,255,.65);';
+    _bodyRow.appendChild(ghost);
+
+    block.style.opacity = '0.2';
+    document.body.style.cursor = 'grabbing';
+
+    _dd = {
+        rid, block, ghost, offX, offY,
+        pointerId: e.pointerId,
+        startX: e.clientX, startY: e.clientY,
+        hasMoved:   false,
+        newTableId: TT_TABLES[Math.floor(origLeft / 100)],
+        newTimeSlot: null,
+    };
+
+    document.addEventListener('pointermove',   _ddMove);
+    document.addEventListener('pointerup',     _ddEnd);
+    document.addEventListener('pointercancel', _ddCancel);
+}
+
+function _ddMove(e) {
+    if (!_dd || e.pointerId !== _dd.pointerId) return;
+    const dx = e.clientX - _dd.startX;
+    const dy = e.clientY - _dd.startY;
+    if (!_dd.hasMoved && Math.sqrt(dx * dx + dy * dy) < 8) return;
+    _dd.hasMoved = true;
+
+    const bodyRect = _bodyRow.getBoundingClientRect();
+    const rawX = e.clientX - bodyRect.left;
+    const rawY = e.clientY - bodyRect.top  - _dd.offY;
+
+    // 列スナップ（100px幅）
+    const col        = Math.max(0, Math.min(Math.floor(rawX / 100), TT_TABLES.length - 1));
+    const snappedLeft = col * 100 + 2;
+
+    // 15分スナップ
+    const rawMin   = ttPxToMin(Math.max(0, rawY));
+    const snapped  = Math.round(rawMin / 15) * 15;
+    const clamped  = Math.max(30, Math.min(snapped, TT_TOTAL_MIN - 15));
+    const snappedTop = ttMinToPx(clamped);
+
+    _dd.ghost.style.left = snappedLeft + 'px';
+    _dd.ghost.style.top  = snappedTop  + 'px';
+    _dd.newTableId   = TT_TABLES[col];
+    _dd.newTimeSlot  = ttMinToSlot(clamped);
+}
+
+async function _ddEnd(e) {
+    if (!_dd || e.pointerId !== _dd.pointerId) return;
+    document.removeEventListener('pointermove',   _ddMove);
+    document.removeEventListener('pointerup',     _ddEnd);
+    document.removeEventListener('pointercancel', _ddCancel);
+    document.body.style.cursor = '';
+
+    const { rid, block, ghost, hasMoved, newTableId, newTimeSlot } = _dd;
+    _dd = null;
+    ghost.remove();
+    block.style.opacity = '';
+
+    if (!hasMoved) {
+        openQuickModal(rid); // クリック → クイックモーダル
+        return;
+    }
+    if (!newTableId || !newTimeSlot) return;
+
+    try {
+        const r = await fetch(`/api/reservation/${rid}/quick-edit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ time_slot: newTimeSlot, assigned_tables: [newTableId] }),
+        });
+        const data = await r.json();
+        if (data.ok) location.reload();
+        else alert('移動エラー: ' + (data.error || '保存に失敗しました'));
+    } catch (err) {
+        alert('通信エラーが発生しました');
+    }
+}
+
+function _ddCancel() {
+    document.removeEventListener('pointermove',   _ddMove);
+    document.removeEventListener('pointerup',     _ddEnd);
+    document.removeEventListener('pointercancel', _ddCancel);
+    document.body.style.cursor = '';
+    if (!_dd) return;
+    _dd.ghost.remove();
+    _dd.block.style.opacity = '';
+    _dd = null;
+}
+
+// ============================================================
+// 空きエリアクリック → 予約追加
+// ============================================================
+let _addIntent = null;
+
+function _addStart(e) {
+    const bodyRect = _bodyRow.getBoundingClientRect();
+    _addIntent = {
+        startX: e.clientX, startY: e.clientY,
+        bodyX: e.clientX - bodyRect.left,
+        bodyY: e.clientY - bodyRect.top,
+        cancelled: false,
+    };
+    document.addEventListener('pointermove', _addMoveCheck);
+    document.addEventListener('pointerup',   _addEnd);
+}
+
+function _addMoveCheck(e) {
+    if (!_addIntent) return;
+    const dx = e.clientX - _addIntent.startX;
+    const dy = e.clientY - _addIntent.startY;
+    if (Math.sqrt(dx * dx + dy * dy) > 10) _addIntent.cancelled = true;
+}
+
+function _addEnd(e) {
+    document.removeEventListener('pointermove', _addMoveCheck);
+    document.removeEventListener('pointerup',   _addEnd);
+    if (!_addIntent || _addIntent.cancelled) { _addIntent = null; return; }
+
+    const { bodyX, bodyY } = _addIntent;
+    _addIntent = null;
+
+    const col      = Math.max(0, Math.min(Math.floor(bodyX / 100), TT_TABLES.length - 1));
+    const tableId  = TT_TABLES[col];
+    const rawMin   = ttPxToMin(bodyY);
+    const snapped  = Math.round(rawMin / 15) * 15;
+    const clamped  = Math.max(30, Math.min(snapped, TT_TOTAL_MIN - 15));
+    const timeSlot = ttMinToSlot(clamped);
+
+    openAddModal(timeSlot, tableId);
+}
+
+// ============================================================
+// クイック追加モーダル
+// ============================================================
+let _amTableId = null;
+let _amModal   = null;
+
+function openAddModal(timeSlot, tableId) {
+    _amTableId = tableId;
+
+    // 時間セレクト生成
+    const sel = document.getElementById('am-time');
+    sel.innerHTML = '';
+    for (let h = 11; h <= 22; h++) {
+        for (let m = 0; m < 60; m += 15) {
+            if (h === 22 && m > 0) break;
+            const val = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+            const opt = document.createElement('option');
+            opt.value = val; opt.textContent = val;
+            if (val === timeSlot) opt.selected = true;
+            sel.appendChild(opt);
+        }
+    }
+
+    // テーブル表示
+    const info = QM_TABLE_INFO[tableId];
+    document.getElementById('am-table-label').textContent =
+        info ? `${tableId}番テーブル（${info.cap}席・${info.zone}）` : '席未定';
+
+    // フォームリセット
+    ['am-name','am-phone','am-notes'].forEach(id => {
+        document.getElementById(id).value = '';
+        document.getElementById(id).classList.remove('is-invalid');
+    });
+    document.getElementById('am-adults').value   = '2';
+    document.getElementById('am-duration').value = '105';
+
+    // 詳細入力リンク
+    document.getElementById('am-full-link').href =
+        `/reservation/new?date={{ target_date }}`;
+
+    if (!_amModal) _amModal = new bootstrap.Modal(document.getElementById('addModal'));
+    _amModal.show();
+    setTimeout(() => document.getElementById('am-name').focus(), 320);
+}
+
+async function addSave() {
+    const nameEl = document.getElementById('am-name');
+    const name   = nameEl.value.trim();
+    if (!name) {
+        nameEl.classList.add('is-invalid');
+        nameEl.focus();
+        return;
+    }
+    nameEl.classList.remove('is-invalid');
+
+    const btn = document.getElementById('am-save-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>登録中…';
+
+    try {
+        const r = await fetch('/api/reservation/quick-add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                date:             '{{ target_date }}',
+                time_slot:        document.getElementById('am-time').value,
+                name,
+                phone:            document.getElementById('am-phone').value.trim(),
+                adults:           parseInt(document.getElementById('am-adults').value) || 2,
+                duration_minutes: parseInt(document.getElementById('am-duration').value) || 105,
+                notes:            document.getElementById('am-notes').value.trim(),
+                assigned_tables:  _amTableId ? [_amTableId] : [],
+            }),
+        });
+        const data = await r.json();
+        if (data.ok) {
+            location.reload();
+        } else {
+            alert('エラー: ' + (data.error || '登録に失敗しました'));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>登録';
+        }
+    } catch (err) {
+        alert('通信エラーが発生しました');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>登録';
+    }
+}
+</script>
+{% endblock %}

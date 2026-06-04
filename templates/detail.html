@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}{{ reservation.name }} 様 — 予約詳細{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+  <a href="/?date={{ reservation.date }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h4 class="mb-0">予約詳細</h4>
+  <div class="ms-auto d-flex gap-2">
+    <a href="/reservation/{{ reservation.id }}/edit" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-pencil me-1"></i>編集
+    </a>
+    <form method="POST" action="/reservation/{{ reservation.id }}/cancel"
+          onsubmit="return confirm('{{ reservation.name }} 様の予約をキャンセルしますか？\nこの操作は取り消せません。')">
+      <button type="submit" class="btn btn-outline-danger btn-sm">
+        <i class="bi bi-x-circle me-1"></i>キャンセル
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="row g-4">
+<div class="col-lg-8">
+
+  <!-- ===== メイン情報カード ===== -->
+  <div class="card mb-4">
+    <div class="card-header py-3 d-flex align-items-center gap-2 flex-wrap">
+      <span class="badge-time fs-6">{{ reservation.time_slot }}</span>
+      <h5 class="mb-0 ms-1">{{ reservation.name }} 様</h5>
+      {% if reservation.is_vip %}
+        <span class="badge badge-vip fs-6"><i class="bi bi-star-fill me-1"></i>VIP</span>
+      {% endif %}
+      {% if reservation.is_group %}
+        <span class="badge badge-group text-white fs-6"><i class="bi bi-people-fill me-1"></i>団体</span>
+      {% endif %}
+      {% if reservation.private_room %}
+        <span class="badge badge-priv fs-6"><i class="bi bi-door-closed me-1"></i>個室</span>
+      {% endif %}
+      <span class="ms-auto badge bg-success">{{ reservation.status }}</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+
+        <div class="col-sm-6">
+          <div class="text-muted small">📅 日時</div>
+          <div class="fw-bold">
+            {{ jp_date(reservation.date) }}<br>
+            {{ reservation.time_slot }}〜
+            {% set h = reservation.duration_minutes // 60 %}
+            {% set m = reservation.duration_minutes % 60 %}
+            （{{ h }}時間{% if m %}{{ m }}分{% endif %}）
+          </div>
+        </div>
+
+        <div class="col-sm-6">
+          <div class="text-muted small">📞 電話番号</div>
+          <div class="fw-bold fs-5">
+            <a href="tel:{{ reservation.phone }}" class="text-decoration-none">
+              {{ reservation.phone }}
+            </a>
+          </div>
+        </div>
+
+        <div class="col-sm-6">
+          <div class="text-muted small">👥 人数</div>
+          <div class="fw-bold">
+            合計 <span class="fs-5 text-danger">{{ reservation.total_people }}</span> 名
+            （大人 {{ reservation.adults }} 名
+            {% if reservation.children_info %}
+            ・子供 {{ reservation.children_info|length }} 名
+            ［{% for c in reservation.children_info %}{{ c.age }}歳{% if not loop.last %}、{% endif %}{% endfor %}］
+            {% endif %}）
+          </div>
+        </div>
+
+        <div class="col-sm-6">
+          <div class="text-muted small">🪑 割り当てテーブル</div>
+          <div class="fw-bold">
+            {% if reservation.assigned_tables %}
+              {% for t in reservation.assigned_tables %}
+              <span class="badge bg-secondary fs-6 me-1">
+                {{ t }}番
+                {% if t in tables %}（{{ tables[t].capacity }}席 / {{ tables[t].zone }}）{% endif %}
+              </span>
+              {% endfor %}
+            {% else %}
+              <span class="text-muted">未割当（手動で確認）</span>
+            {% endif %}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 備考カード ===== -->
+  {% if reservation.notes %}
+  <div class="card mb-4">
+    <div class="card-header py-3">
+      <i class="bi bi-sticky-fill me-2 text-secondary"></i>備考
+    </div>
+    <div class="card-body">
+      <div class="p-3 bg-light rounded" style="white-space:pre-wrap">{{ reservation.notes }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ===== 団体詳細カード ===== -->
+  {% if reservation.is_group %}
+  <div class="card">
+    <div class="card-header py-3" style="background:#fffbea; border-bottom-color:#ffe082">
+      <i class="bi bi-people-fill me-2" style="color:#b8860b"></i>
+      <span style="color:#b8860b">団体予約詳細</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+
+        {% if reservation.budget_per_person %}
+        <div class="col-sm-6">
+          <div class="text-muted small">💴 お一人様予算</div>
+          <div class="fw-bold fs-5">¥{{ "{:,}".format(reservation.budget_per_person) }}</div>
+        </div>
+        {% endif %}
+
+        {% if reservation.needs_type %}
+        <div class="col-sm-6">
+          <div class="text-muted small">🎯 ニーズ</div>
+          <div class="fw-bold">
+            {% if reservation.needs_type == 'quality' %}🥩 品質重視
+            {% else %}🍽️ 量重視{% endif %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% if reservation.gender_male is not none or reservation.gender_female is not none %}
+        <div class="col-sm-6">
+          <div class="text-muted small">👫 男女比</div>
+          <div class="fw-bold">
+            👨 {{ reservation.gender_male or 0 }}名　/
+            👩 {{ reservation.gender_female or 0 }}名
+          </div>
+        </div>
+        {% endif %}
+
+        {% if reservation.organizer_note %}
+        <div class="col-12">
+          <div class="text-muted small">📝 幹事様ご要望</div>
+          <div class="fw-bold p-3 bg-light rounded" style="white-space:pre-wrap">{{ reservation.organizer_note }}</div>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<div class="col-lg-4">
+  <div class="card">
+    <div class="card-body text-muted small">
+      <div class="mb-2">🕓 登録日時</div>
+      <div class="fw-semibold mb-3">{{ reservation.created_at }}</div>
+      <div class="mb-2">✏️ 最終更新</div>
+      <div class="fw-semibold">{{ reservation.updated_at }}</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /row -->
+{% endblock %}
