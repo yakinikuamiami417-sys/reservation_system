@@ -68,6 +68,7 @@
   <span class="legend-chip r3">3回転目 ⚠️</span>
   <span class="legend-chip gap-danger">🔴 間隔15分未満</span>
   <span class="legend-chip gap-caution">🟡 間隔15〜30分</span>
+  <span class="legend-chip" style="background:#198754"><i class="bi bi-check-lg"></i> 来店済み</span>
   {% if target_date == today %}
   <span class="legend-chip now">▶ 現在時刻</span>
   {% endif %}
@@ -205,11 +206,16 @@
         <!-- 回転ブロック -->
         <div class="tt-res-block r{{ res.rotation_num }}
              {% if res.gap_danger %}gap-danger{% elif res.gap_caution %}gap-caution{% endif %}
-             {% if res.warn_3rd %}third-warn{% endif %}"
+             {% if res.warn_3rd %}third-warn{% endif %}
+             {% if res.status == 'visited' %}visited{% endif %}"
              style="left:{{ col_left + 2 }}px; top:{{ res.top_px }}px;
                     height:{{ res.height_px }}px; width:93px"
              data-rid="{{ res.id }}"
-             title="{{ res.name }} 様 {{ res.total_people }}名 {{ res.time_slot }}〜{% if res.notes %} | 📝 {{ res.notes }}{% endif %}">
+             title="{{ res.name }} 様 {{ res.total_people }}名 {{ res.time_slot }}〜{% if res.status == 'visited' %} | ✅ 来店済み{% endif %}{% if res.notes %} | 📝 {{ res.notes }}{% endif %}">
+
+          {% if res.status == 'visited' %}
+          <span class="visited-check" title="来店済み"><i class="bi bi-check-lg"></i></span>
+          {% endif %}
 
           <!-- 回転バッジ & ギャップ表示 -->
           <div class="d-flex align-items-center gap-1 mb-1" style="flex-wrap:nowrap">
@@ -380,6 +386,9 @@
         <a id="qm-edit-link" href="#" class="btn btn-outline-primary btn-sm me-auto">
           <i class="bi bi-pencil me-1"></i>フル編集
         </a>
+        <button type="button" class="btn btn-outline-success btn-sm" id="qm-visit-btn" onclick="qmToggleVisited()">
+          <i class="bi bi-door-open me-1"></i>来店受付
+        </button>
         <button type="button" class="btn btn-outline-danger btn-sm" onclick="qmCancel()">
           <i class="bi bi-x-circle me-1"></i>キャンセル
         </button>
@@ -448,7 +457,8 @@
             <span class="text-muted fw-normal" style="font-size:.68rem">（省略可）</span>
           </label>
           <input id="am-phone" type="tel" class="form-control form-control-sm"
-                 placeholder="090-XXXX-XXXX" autocomplete="off">
+                 placeholder="090-XXXX-XXXX" autocomplete="off"
+                 onblur="this.value = formatPhoneNumber(this.value)">
         </div>
 
         <div class="mb-2">
@@ -577,6 +587,7 @@ async function openQuickModal(rid) {
 function _buildQmInfo() {
   const res   = _qmRes;
   const badges = [
+    res.status === 'visited' ? '<span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>来店済み</span>' : '',
     res.is_vip   ? '<span class="badge badge-vip">⭐ VIP</span>'    : '',
     res.is_group ? '<span class="badge badge-group text-white">👥 団体</span>' : '',
     res.private_room ? '<span class="badge badge-priv">🚪 個室</span>' : '',
@@ -592,6 +603,41 @@ function _buildQmInfo() {
     <div class="text-muted small">
       ${res.total_people}名（大人${res.adults}名）　${res.duration_minutes}分　${tables || '席未定'}
     </div>`;
+
+  // 来店受付ボタンの表示切り替え
+  const visitBtn = document.getElementById('qm-visit-btn');
+  if (res.status === 'visited') {
+    visitBtn.className = 'btn btn-success btn-sm';
+    visitBtn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>来店済み（解除）';
+    visitBtn.disabled = false;
+  } else {
+    visitBtn.className = 'btn btn-outline-success btn-sm';
+    visitBtn.innerHTML = '<i class="bi bi-door-open me-1"></i>来店受付';
+    visitBtn.disabled = false;
+  }
+}
+
+async function qmToggleVisited() {
+  if (!_qmRes) return;
+  const btn = document.getElementById('qm-visit-btn');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/api/reservation/${_qmResId}/quick-edit`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ action: 'toggle-visited' }),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      location.reload();
+    } else {
+      alert('エラー: ' + (data.error || '更新に失敗しました'));
+      btn.disabled = false;
+    }
+  } catch(e) {
+    alert('通信エラーが発生しました');
+    btn.disabled = false;
+  }
 }
 
 function _buildQmTimeSelect() {

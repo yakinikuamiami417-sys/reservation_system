@@ -48,9 +48,10 @@
         {% else %}
         <div class="list-group list-group-flush">
         {% for res in reservations %}
-          {% set card_cls = 'vip' if res.is_vip else ('group' if res.is_group else '') %}
+          {% set card_cls = ('visited' if res.status == 'visited' else ('vip' if res.is_vip else ('group' if res.is_group else ''))) %}
           <a href="/reservation/{{ res.id }}"
-             class="list-group-item list-group-item-action px-4 py-3 res-card {{ card_cls }}">
+             class="list-group-item list-group-item-action px-4 py-3 res-card {{ card_cls }}"
+             id="rescard-{{ res.id }}">
             <div class="d-flex align-items-start gap-3">
               <!-- 時刻 -->
               <div class="pt-1">
@@ -65,6 +66,7 @@
               <div class="flex-grow-1 min-width-0">
                 <div class="d-flex align-items-center flex-wrap gap-1 mb-1">
                   <strong class="fs-6">{{ res.name }} 様</strong>
+                  {% if res.status == 'visited' %}<span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>来店済み</span>{% endif %}
                   {% if res.is_vip    %}<span class="badge badge-vip"><i class="bi bi-star-fill me-1"></i>VIP</span>{% endif %}
                   {% if res.is_group  %}<span class="badge badge-group text-white"><i class="bi bi-people-fill me-1"></i>団体</span>{% endif %}
                   {% if res.private_room %}<span class="badge badge-priv"><i class="bi bi-door-closed me-1"></i>個室</span>{% endif %}
@@ -95,6 +97,17 @@
                 </div>
                 {% endif %}
               </div>
+              <!-- 来店受付トグル -->
+              <button type="button"
+                      class="visit-toggle-btn {{ 'is-visited' if res.status == 'visited' else 'not-visited' }}"
+                      id="visitbtn-{{ res.id }}"
+                      onclick="toggleVisited(event, {{ res.id }})">
+                {% if res.status == 'visited' %}
+                  <i class="bi bi-check-circle-fill me-1"></i>来店済み
+                {% else %}
+                  <i class="bi bi-door-open me-1"></i>来店受付
+                {% endif %}
+              </button>
               <i class="bi bi-chevron-right text-muted align-self-center"></i>
             </div>
           </a>
@@ -126,8 +139,8 @@
               <div class="fw-bold" style="font-size:.8rem">{{ t_id }}番</div>
               <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席</div>
               {% for r in tlist %}
-              <div style="font-size:.6rem; line-height:1.2; color:#b01">
-                {{ r.time_slot }}-{{ r.end_time }}<br>{{ r.name[:4] }}
+              <div class="{{ 'seated-entry' if r.is_visited else '' }}" style="font-size:.6rem; line-height:1.2; color:{{ '' if r.is_visited else '#b01' }}">
+                {% if r.is_visited %}✅ {% endif %}{{ r.time_slot }}-{{ r.end_time }}<br>{{ r.name[:4] }}
               </div>
               {% endfor %}
               {% if not tlist %}
@@ -149,7 +162,9 @@
               <div class="fw-bold" style="font-size:.8rem">{{ t_id }}番</div>
               <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席</div>
               {% for r in tlist %}
-              <div style="font-size:.6rem; line-height:1.2; color:#b01">{{ r.name[:4] }}</div>
+              <div class="{{ 'seated-entry' if r.is_visited else '' }}" style="font-size:.6rem; line-height:1.2; color:{{ '' if r.is_visited else '#b01' }}">
+                {% if r.is_visited %}✅ {% endif %}{{ r.name[:4] }}
+              </div>
               {% endfor %}
               {% if not tlist %}
               <div style="color:green; font-size:.65rem">空席</div>
@@ -170,8 +185,8 @@
               <div class="fw-bold" style="font-size:.8rem">{{ t_id }}番 {% if info.is_buffer %}🔒{% endif %}</div>
               <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席 {{ info.zone }}</div>
               {% for r in tlist %}
-              <div style="font-size:.6rem; line-height:1.2; color:#b01">
-                {{ r.time_slot }}<br>{{ r.name[:4] }}
+              <div class="{{ 'seated-entry' if r.is_visited else '' }}" style="font-size:.6rem; line-height:1.2; color:{{ '' if r.is_visited else '#b01' }}">
+                {% if r.is_visited %}✅ {% endif %}{{ r.time_slot }}<br>{{ r.name[:4] }}
               </div>
               {% endfor %}
               {% if not tlist %}
@@ -199,6 +214,7 @@
       </div>
       <div class="card-body">
         {% set total_guests = reservations | sum(attribute='total_people') %}
+        {% set visited_list = reservations | selectattr('status', 'equalto', 'visited') | list %}
         <div class="row g-2 text-center">
           <div class="col-6">
             <div class="p-2 bg-light rounded">
@@ -228,6 +244,18 @@
               <div class="small text-muted">団体組</div>
             </div>
           </div>
+          <div class="col-6">
+            <div class="p-2 rounded" style="background:#f0fff4">
+              <div class="fs-3 fw-bold text-success">{{ visited_list|length }}</div>
+              <div class="small text-muted">✅ 来店済み</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-2 bg-light rounded">
+              <div class="fs-3 fw-bold text-muted">{{ reservations|length - visited_list|length }}</div>
+              <div class="small text-muted">未来店</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -235,4 +263,36 @@
   </div><!-- /右カラム -->
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ======================================================
+// 来店受付トグル（一覧カードのボタンから）
+// ======================================================
+async function toggleVisited(ev, rid) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const btn = document.getElementById('visitbtn-' + rid);
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/api/reservation/${rid}/quick-edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'toggle-visited' }),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      location.reload();
+    } else {
+      alert('エラー: ' + (data.error || '更新に失敗しました'));
+      btn.disabled = false;
+    }
+  } catch (e) {
+    alert('通信エラーが発生しました');
+    btn.disabled = false;
+  }
+}
+</script>
 {% endblock %}

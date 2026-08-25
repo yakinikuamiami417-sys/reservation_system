@@ -4,12 +4,18 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, f
 import json, socket, time as _time, csv, io, os
 from datetime import datetime, date, timedelta
 from sqlalchemy import text
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
 
 from database import (
     init_db, save_reservation, get_reservations_by_date,
-    get_reservation, update_reservation, cancel_reservation, engine
+    get_reservation, update_reservation, cancel_reservation,
+    set_reservation_status, get_all_reservations, engine
 )
-from logic import assign_seats, check_time_conflict, get_table_status, get_seat_map_status, TABLES
+from logic import (
+    assign_seats, check_time_conflict, get_table_status, get_seat_map_status,
+    get_customer_history, aggregate_customer_ranking, TABLES
+)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'kiriniya-dev-only-change-in-prod')
@@ -187,7 +193,9 @@ def view_reservation(rid):
     if not res:
         flash('予約が見つかりません', 'danger')
         return redirect(url_for('index'))
-    return render_template('detail.html', reservation=res, tables=TABLES)
+    all_res = get_all_reservations(include_cancelled=False)
+    history = get_customer_history(res['name'], res['phone'], all_res, exclude_id=rid)
+    return render_template('detail.html', reservation=res, tables=TABLES, history=history)
 
 # ============================================================
 # ルート: 予約編集
@@ -248,6 +256,28 @@ def cancel_route(rid):
         flash(f"🗑️ {res['name']} 様の予約をキャンセルしました", 'info')
         return redirect(url_for('index', date=res['date']))
     return redirect(url_for('index'))
+
+# ============================================================
+# ルート: 来店受付（着席）トグル
+# ============================================================
+@app.route('/reservation/<int:rid>/toggle-visited', methods=['POST'])
+def toggle_visited_route(rid):
+    """来店済み ⇔ 未来店（confirmed）を切り替える。現場で着席が一目でわかるようにする。"""
+    res = get_reservation(rid)
+    if not res:
+        flash('予約が見つかりません', 'danger')
+        return redirect(url_for('index'))
+    if res['status'] == 'cancelled':
+        flash('キャンセル済みの予約は来店受付できません', 'warning')
+        return redirect(request.referrer or url_for('index', date=res['date']))
+
+    new_status = 'confirmed' if res['status'] == 'visited' else 'visited'
+    set_reservation_status(rid, new_status)
+    if new_status == 'visited':
+        flash(f"🪑 {res['name']} 様 来店受付しました（着席）", 'success')
+    else:
+        flash(f"↩️ {res['name']} 様の来店ステータスを解除しました", 'info')
+    return redirect(request.referrer or url_for('index', date=res['date']))
 
 # ============================================================
 # ルート: タイムテーブル
@@ -617,6 +647,14 @@ def api_quick_edit(rid):
         cancel_reservation(rid)
         return jsonify({'ok': True, 'action': 'cancelled'})
 
+    # 来店受付トグル（着席済み ⇔ 未来店）
+    if data.get('action') == 'toggle-visited':
+        if res['status'] == 'cancelled':
+            return jsonify({'ok': False, 'error': 'キャンセル済みの予約は来店受付できません'}), 400
+        new_status = 'confirmed' if res['status'] == 'visited' else 'visited'
+        set_reservation_status(rid, new_status)
+        return jsonify({'ok': True, 'action': 'status_updated', 'status': new_status})
+
     # 時間 / 席を更新
     updated = dict(res)
     if 'time_slot' in data:
@@ -672,6 +710,61 @@ def api_quick_add():
 
 
 # ============================================================
+# API: 顧客カルテ（過去履歴）呼び出し
+# ============================================================
+@app.route('/api/customer-history')
+def api_customer_history():
+    """氏名・電話番号から過去の来店履歴を返す。予約フォームからAJAXで呼ばれる。"""
+    name  = request.args.get('name', '').strip()
+    phone = request.args.get('phone', '').strip()
+    if not name and not phone:
+        return jsonify({'found': False})
+
+    exclude_id = request.args.get('exclude_id')
+    all_res = get_all_reservations(include_cancelled=False)
+    history = get_customer_history(
+        name, phone, all_res,
+        exclude_id=int(exclude_id) if exclude_id else None,
+    )
+    return jsonify(history)
+
+
+# ============================================================
+# ページ: 分析・集計（来店頻度ランキング・売上ランキング）
+# ============================================================
+@app.route('/analytics')
+def analytics():
+    period = request.args.get('period', 'all')  # all / 30 / 90 / 365
+    since_date = None
+    if period != 'all':
+        since_date = (date.today() - timedelta(days=int(period))).isoformat()
+
+    all_res   = get_all_reservations(include_cancelled=False)
+    customers = aggregate_customer_ranking(all_res, since_date=since_date)
+
+    by_visits = sorted(customers, key=lambda c: (-c['visit_count'], c['days_since_last_visit']))[:50]
+    by_sales  = sorted(customers, key=lambda c: -c['total_sales'])[:50]
+    by_recent = sorted(customers, key=lambda c: c['days_since_last_visit'])[:50]
+
+    total_customers  = len(customers)
+    total_sales_all  = sum(c['total_sales'] for c in customers)
+    total_visits_all = sum(c['visit_count'] for c in customers)
+    repeat_customers = sum(1 for c in customers if c['visit_count'] >= 2)
+
+    return render_template(
+        'analytics.html',
+        period            = period,
+        by_visits         = by_visits,
+        by_sales          = by_sales,
+        by_recent         = by_recent,
+        total_customers   = total_customers,
+        total_sales_all   = total_sales_all,
+        total_visits_all  = total_visits_all,
+        repeat_customers  = repeat_customers,
+    )
+
+
+# ============================================================
 # バックアップ: CSV全件エクスポート
 # ============================================================
 @app.route('/backup/csv')
@@ -688,8 +781,8 @@ def backup_csv():
         'ID', '日付', '時間', '氏名', '電話番号',
         '大人', '子供', '合計人数', '利用時間(分)',
         '個室', 'VIP', '団体', '予算/人', 'ニーズ',
-        '男性', '女性', '幹事メモ', '備考',
-        'テーブル', 'ステータス', '登録日時', '更新日時',
+        '男性', '女性', '幹事メモ', '備考', 'メニュー', '売上',
+        'テーブル', 'ステータス', '来店受付日時', '登録日時', '更新日時',
     ])
     for r in rows:
         d = dict(r)
@@ -705,7 +798,8 @@ def backup_csv():
             d['needs_type'] or '',
             d['gender_male'] or '', d['gender_female'] or '',
             d['organizer_note'] or '', d['notes'] or '',
-            d['assigned_tables'], d['status'],
+            d.get('menu_note') or '', d.get('sales_amount') or '',
+            d['assigned_tables'], d['status'], d.get('visited_at') or '',
             d['created_at'], d['updated_at'],
         ])
 
@@ -713,6 +807,95 @@ def backup_csv():
     return Response(
         '﻿' + output.getvalue(),
         mimetype='text/csv; charset=utf-8-sig',
+        headers={'Content-Disposition': f'attachment; filename="{fname}"'},
+    )
+
+
+# ============================================================
+# バックアップ: 顧客集計 CSV エクスポート
+# ============================================================
+@app.route('/backup/customers/csv')
+def backup_customers_csv():
+    """顧客ごとの来店回数・累計売上をCSVでダウンロード"""
+    all_res   = get_all_reservations(include_cancelled=False)
+    customers = aggregate_customer_ranking(all_res)
+    customers.sort(key=lambda c: -c['visit_count'])
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['氏名', '電話番号', '来店回数', '累計売上', '平均単価/回',
+                      '初回来店', '前回来店', '前回からの経過日数', '最終来店受付日時'])
+    for c in customers:
+        writer.writerow([
+            c['name'], c['phone'], c['visit_count'], c['total_sales'], c['avg_sales'],
+            c['first_visit_date'], c['last_visit_date'], c['days_since_last_visit'],
+            c.get('last_visited_at') or '',
+        ])
+
+    fname = f"kiriniya_customers_{date.today().isoformat()}.csv"
+    return Response(
+        '﻿' + output.getvalue(),
+        mimetype='text/csv; charset=utf-8-sig',
+        headers={'Content-Disposition': f'attachment; filename="{fname}"'},
+    )
+
+
+# ============================================================
+# バックアップ: Excel(XLSX) 全件エクスポート（予約全件 + 顧客集計）
+# ============================================================
+@app.route('/backup/xlsx')
+def backup_xlsx():
+    all_res   = get_all_reservations(include_cancelled=True)
+    customers = aggregate_customer_ranking([r for r in all_res if r['status'] != 'cancelled'])
+    customers.sort(key=lambda c: -c['visit_count'])
+
+    wb = Workbook()
+
+    ws1 = wb.active
+    ws1.title = '予約全件'
+    ws1.append([
+        'ID', '日付', '時間', '氏名', '電話番号',
+        '大人', '子供', '合計人数', '利用時間(分)',
+        '個室', 'VIP', '団体', '予算/人', 'ニーズ',
+        '男性', '女性', '幹事メモ', '備考', 'メニュー', '売上',
+        'テーブル', 'ステータス', '来店受付日時', '登録日時', '更新日時',
+    ])
+    for r in all_res:
+        ws1.append([
+            r['id'], r['date'], r['time_slot'], r['name'], r['phone'],
+            r['adults'], len(r['children_info']), r['total_people'], r['duration_minutes'],
+            '○' if r['private_room'] else '', '○' if r['is_vip'] else '', '○' if r['is_group'] else '',
+            r.get('budget_per_person') or '', r.get('needs_type') or '',
+            r.get('gender_male') or '', r.get('gender_female') or '',
+            r.get('organizer_note') or '', r.get('notes') or '',
+            r.get('menu_note') or '', r.get('sales_amount') or '',
+            '・'.join(str(t) for t in r['assigned_tables']), r['status'], r.get('visited_at') or '',
+            r['created_at'], r['updated_at'],
+        ])
+
+    ws2 = wb.create_sheet('顧客集計')
+    ws2.append(['氏名', '電話番号', '来店回数', '累計売上', '平均単価/回',
+                '初回来店', '前回来店', '前回からの経過日数', '最終来店受付日時'])
+    for c in customers:
+        ws2.append([
+            c['name'], c['phone'], c['visit_count'], c['total_sales'], c['avg_sales'],
+            c['first_visit_date'], c['last_visit_date'], c['days_since_last_visit'],
+            c.get('last_visited_at') or '',
+        ])
+
+    for ws in (ws1, ws2):
+        for col_cells in ws.columns:
+            length = max((len(str(cell.value)) for cell in col_cells if cell.value is not None), default=8)
+            ws.column_dimensions[get_column_letter(col_cells[0].column)].width = min(length + 2, 40)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    fname = f"kiriniya_full_{date.today().isoformat()}.xlsx"
+    return Response(
+        buf.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition': f'attachment; filename="{fname}"'},
     )
 
@@ -775,6 +958,8 @@ def _parse_form(req, edit_id=None) -> tuple[dict, str | None]:
             'gender_female':     int(f['gender_female'])  if f.get('gender_female', '').strip().isdigit() else None,
             'organizer_note':    f.get('organizer_note', '').strip() or None,
             'notes':             f.get('notes', '').strip() or None,
+            'menu_note':         f.get('menu_note', '').strip() or None,
+            'sales_amount':      int(f['sales_amount']) if f.get('sales_amount', '').strip() else None,
             'assigned_tables':   '[]',
             'status':            'confirmed',
         }

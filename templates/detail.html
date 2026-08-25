@@ -9,6 +9,19 @@
   </a>
   <h4 class="mb-0">予約詳細</h4>
   <div class="ms-auto d-flex gap-2">
+    {% if reservation.status != 'cancelled' %}
+    <form method="POST" action="/reservation/{{ reservation.id }}/toggle-visited">
+      {% if reservation.status == 'visited' %}
+      <button type="submit" class="btn btn-success btn-sm">
+        <i class="bi bi-check-circle-fill me-1"></i>来店済み（解除する）
+      </button>
+      {% else %}
+      <button type="submit" class="btn btn-outline-success btn-sm">
+        <i class="bi bi-door-open me-1"></i>来店受付する
+      </button>
+      {% endif %}
+    </form>
+    {% endif %}
     <a href="/reservation/{{ reservation.id }}/edit" class="btn btn-outline-primary btn-sm">
       <i class="bi bi-pencil me-1"></i>編集
     </a>
@@ -38,7 +51,13 @@
       {% if reservation.private_room %}
         <span class="badge badge-priv fs-6"><i class="bi bi-door-closed me-1"></i>個室</span>
       {% endif %}
-      <span class="ms-auto badge bg-success">{{ reservation.status }}</span>
+      {% if reservation.status == 'visited' %}
+      <span class="ms-auto badge bg-success fs-6"><i class="bi bi-check-circle-fill me-1"></i>来店済み</span>
+      {% elif reservation.status == 'cancelled' %}
+      <span class="ms-auto badge bg-secondary fs-6">キャンセル済み</span>
+      {% else %}
+      <span class="ms-auto badge bg-warning text-dark fs-6"><i class="bi bi-hourglass-split me-1"></i>未来店</span>
+      {% endif %}
     </div>
     <div class="card-body">
       <div class="row g-3">
@@ -62,6 +81,13 @@
             </a>
           </div>
         </div>
+
+        {% if reservation.status == 'visited' and reservation.visited_at %}
+        <div class="col-sm-6">
+          <div class="text-muted small">🚪 来店受付日時</div>
+          <div class="fw-bold text-success">{{ reservation.visited_at }}</div>
+        </div>
+        {% endif %}
 
         <div class="col-sm-6">
           <div class="text-muted small">👥 人数</div>
@@ -103,6 +129,65 @@
     </div>
     <div class="card-body">
       <div class="p-3 bg-light rounded" style="white-space:pre-wrap">{{ reservation.notes }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ===== メニュー・売上カード ===== -->
+  {% if reservation.menu_note or reservation.sales_amount %}
+  <div class="card mb-4">
+    <div class="card-header py-3">
+      <i class="bi bi-egg-fried me-2 text-secondary"></i>ご注文・実績
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        {% if reservation.menu_note %}
+        <div class="col-12">
+          <div class="text-muted small">🍽️ 食べたメニュー</div>
+          <div class="p-3 bg-light rounded" style="white-space:pre-wrap">{{ reservation.menu_note }}</div>
+        </div>
+        {% endif %}
+        {% if reservation.sales_amount %}
+        <div class="col-12">
+          <div class="text-muted small">💴 実績売上</div>
+          <div class="fw-bold fs-5">¥{{ "{:,}".format(reservation.sales_amount) }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ===== 顧客カルテ（過去の来店履歴） ===== -->
+  {% if history and history.found %}
+  <div class="card mb-4">
+    <div class="card-header py-3 d-flex align-items-center gap-2 flex-wrap"
+         style="background:#fff8ee; border-bottom-color:var(--kirin-gold)">
+      <i class="bi bi-person-vcard-fill" style="color:var(--kirin-gold)"></i>
+      <span class="fw-bold">顧客カルテ — 過去のご来店 {{ history.visit_count }}回</span>
+      {% if history.total_sales %}
+      <span class="ms-auto badge bg-success">累計 ¥{{ "{:,}".format(history.total_sales) }}</span>
+      {% endif %}
+    </div>
+    <div class="card-body" style="max-height:320px; overflow-y:auto">
+      {% for v in history.visits %}
+      <div class="border-bottom py-2">
+        <a href="/reservation/{{ v.id }}" class="fw-bold text-decoration-none">{{ v.date }}</a>
+        <span class="text-muted small">（{{ v.total_people }}名）</span>
+        {% if v.status == 'visited' %}
+        <span class="badge bg-success">✅ 来店受付済</span>
+        {% endif %}
+        {% if v.sales_amount %}
+        <span class="badge bg-light text-dark border ms-1">¥{{ "{:,}".format(v.sales_amount) }}</span>
+        {% endif %}
+        {% if v.menu_note %}
+        <div class="text-muted small mt-1">🍽️ {{ v.menu_note }}</div>
+        {% endif %}
+        {% if v.notes %}
+        <div class="text-muted small">📝 {{ v.notes }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
     </div>
   </div>
   {% endif %}

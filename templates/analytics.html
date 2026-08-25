@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}分析・集計 — キリン屋{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+  <a href="/" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h4 class="mb-0"><i class="bi bi-graph-up me-2 text-danger"></i>分析・集計</h4>
+
+  <div class="ms-auto btn-group btn-group-sm" role="group">
+    <a href="/analytics?period=30"  class="btn btn-outline-secondary {{ 'active' if period=='30'  else '' }}">直近30日</a>
+    <a href="/analytics?period=90"  class="btn btn-outline-secondary {{ 'active' if period=='90'  else '' }}">直近90日</a>
+    <a href="/analytics?period=365" class="btn btn-outline-secondary {{ 'active' if period=='365' else '' }}">直近1年</a>
+    <a href="/analytics?period=all" class="btn btn-outline-secondary {{ 'active' if period=='all' else '' }}">全期間</a>
+  </div>
+</div>
+
+<!-- ===== サマリータイル ===== -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card h-100">
+      <div class="card-body text-center">
+        <div class="text-muted small">顧客数</div>
+        <div class="fw-bold fs-3 text-danger">{{ total_customers }}<span class="fs-6">名</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100">
+      <div class="card-body text-center">
+        <div class="text-muted small">うちリピーター（2回以上）</div>
+        <div class="fw-bold fs-3" style="color:var(--kirin-gold)">{{ repeat_customers }}<span class="fs-6">名</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100">
+      <div class="card-body text-center">
+        <div class="text-muted small">来店（予約）件数</div>
+        <div class="fw-bold fs-3">{{ total_visits_all }}<span class="fs-6">件</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100">
+      <div class="card-body text-center">
+        <div class="text-muted small">累計売上（記録分）</div>
+        <div class="fw-bold fs-4 text-success">¥{{ "{:,}".format(total_sales_all) }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="text-muted small mb-4">
+  <i class="bi bi-info-circle me-1"></i>
+  同一顧客の判定は電話番号（未入力時は氏名）で行っています。
+  売上は各予約の「実績売上」入力欄に記録された金額の合計です（未入力の来店は¥0として扱われます）。
+</div>
+
+<div class="row g-4">
+
+  <!-- ===== 来店頻度ランキング ===== -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header py-3">
+        <i class="bi bi-arrow-repeat me-2 text-danger"></i>来店頻度ランキング
+        <span class="text-muted small ms-1">（リピート回数順）</span>
+      </div>
+      <div class="card-body p-0" style="max-height:560px; overflow-y:auto">
+        <table class="table table-hover mb-0 align-middle">
+          <thead class="table-light" style="position:sticky; top:0">
+            <tr>
+              <th style="width:40px">#</th>
+              <th>氏名</th>
+              <th class="text-center">来店回数</th>
+              <th class="text-center">前回来店</th>
+              <th class="text-end">累計売上</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in by_visits %}
+            <tr>
+              <td class="text-muted">{{ loop.index }}</td>
+              <td>
+                <div class="fw-semibold">{{ c.name }}</div>
+                <div class="text-muted" style="font-size:.72rem">{{ c.phone }}</div>
+              </td>
+              <td class="text-center">
+                <span class="badge bg-danger fs-6">{{ c.visit_count }}回</span>
+              </td>
+              <td class="text-center small">
+                {{ c.last_visit_date }}<br>
+                <span class="text-muted">
+                  {% if c.days_since_last_visit == 0 %}本日{% else %}{{ c.days_since_last_visit }}日前{% endif %}
+                </span>
+                {% if c.last_visited_at %}
+                <br><span class="text-success" style="font-size:.68rem">✅ {{ c.last_visited_at[11:16] }} 来店受付</span>
+                {% endif %}
+              </td>
+              <td class="text-end fw-semibold">¥{{ "{:,}".format(c.total_sales) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-4">データがありません</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 売上ランキング ===== -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header py-3">
+        <i class="bi bi-trophy-fill me-2" style="color:var(--kirin-gold)"></i>売上ランキング
+        <span class="text-muted small ms-1">（累計売上順）</span>
+      </div>
+      <div class="card-body p-0" style="max-height:560px; overflow-y:auto">
+        <table class="table table-hover mb-0 align-middle">
+          <thead class="table-light" style="position:sticky; top:0">
+            <tr>
+              <th style="width:40px">#</th>
+              <th>氏名</th>
+              <th class="text-end">累計売上</th>
+              <th class="text-center">来店回数</th>
+              <th class="text-end">平均単価/回</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in by_sales %}
+            <tr>
+              <td class="text-muted">{{ loop.index }}</td>
+              <td>
+                <div class="fw-semibold">{{ c.name }}</div>
+                <div class="text-muted" style="font-size:.72rem">{{ c.phone }}</div>
+              </td>
+              <td class="text-end">
+                <span class="fw-bold text-success">¥{{ "{:,}".format(c.total_sales) }}</span>
+              </td>
+              <td class="text-center">{{ c.visit_count }}回</td>
+              <td class="text-end text-muted">¥{{ "{:,}".format(c.avg_sales) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-4">データがありません</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== エクスポート導線 ===== -->
+<div class="d-flex justify-content-end gap-2 mt-4 pb-4">
+  <a href="/backup/customers/csv" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-filetype-csv me-1"></i>顧客集計をCSVで出力
+  </a>
+  <a href="/backup/xlsx" class="btn btn-outline-success btn-sm">
+    <i class="bi bi-file-earmark-excel me-1"></i>全データをExcelで出力
+  </a>
+</div>
+
+{% endblock %}

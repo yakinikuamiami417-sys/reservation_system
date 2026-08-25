@@ -56,16 +56,24 @@ def init_db():
         con.execute(text('CREATE INDEX IF NOT EXISTS idx_res_date ON reservations(date)'))
         con.execute(text('CREATE INDEX IF NOT EXISTS idx_res_status ON reservations(status)'))
 
-    # notesカラムのマイグレーション
+    # notes / menu_note / sales_amount / visited_at カラムのマイグレーション（既存DBへの追加列）
+    new_columns = [
+        ('notes',        'TEXT'),
+        ('menu_note',    'TEXT'),
+        ('sales_amount', 'INTEGER'),
+        ('visited_at',   'TEXT'),   # 来店受付（チェックイン）した日時
+    ]
     if _IS_PG:
         with engine.begin() as con:
-            con.execute(text('ALTER TABLE reservations ADD COLUMN IF NOT EXISTS notes TEXT'))
+            for col, col_type in new_columns:
+                con.execute(text(f'ALTER TABLE reservations ADD COLUMN IF NOT EXISTS {col} {col_type}'))
     else:
-        try:
-            with engine.begin() as con:
-                con.execute(text('ALTER TABLE reservations ADD COLUMN notes TEXT'))
-        except Exception:
-            pass
+        for col, col_type in new_columns:
+            try:
+                with engine.begin() as con:
+                    con.execute(text(f'ALTER TABLE reservations ADD COLUMN {col} {col_type}'))
+            except Exception:
+                pass
 
     print("[OK] DB初期化完了")
 
@@ -90,6 +98,8 @@ def save_reservation(data: dict) -> int:
         'gender_female':     data.get('gender_female'),
         'organizer_note':    data.get('organizer_note'),
         'notes':             data.get('notes'),
+        'menu_note':         data.get('menu_note'),
+        'sales_amount':      data.get('sales_amount'),
         'assigned_tables':   data['assigned_tables'] if isinstance(data['assigned_tables'], str) else json.dumps(data['assigned_tables']),
         'status':            data.get('status', 'confirmed'),
         'created_at':        now,
@@ -100,11 +110,11 @@ def save_reservation(data: dict) -> int:
         (date, time_slot, name, phone, adults, children_info, total_people,
          duration_minutes, private_room, is_vip, is_group,
          budget_per_person, needs_type, gender_male, gender_female, organizer_note,
-         notes, assigned_tables, status, created_at, updated_at)
+         notes, menu_note, sales_amount, assigned_tables, status, created_at, updated_at)
         VALUES (:date, :time_slot, :name, :phone, :adults, :children_info, :total_people,
          :duration_minutes, :private_room, :is_vip, :is_group,
          :budget_per_person, :needs_type, :gender_male, :gender_female, :organizer_note,
-         :notes, :assigned_tables, :status, :created_at, :updated_at)
+         :notes, :menu_note, :sales_amount, :assigned_tables, :status, :created_at, :updated_at)
     """
     if _IS_PG:
         sql += ' RETURNING id'
@@ -119,6 +129,19 @@ def get_reservations_by_date(target_date: str) -> list:
             text("SELECT * FROM reservations WHERE date=:date AND status!='cancelled' ORDER BY time_slot"),
             {"date": target_date}
         ).mappings().all()
+    return [_row_to_dict(dict(r)) for r in rows]
+
+
+def get_all_reservations(include_cancelled: bool = False) -> list:
+    """
+    顧客カルテ検索・分析集計・全件エクスポート用に全予約を取得する。
+    """
+    sql = "SELECT * FROM reservations"
+    if not include_cancelled:
+        sql += " WHERE status != 'cancelled'"
+    sql += " ORDER BY date, time_slot"
+    with engine.connect() as con:
+        rows = con.execute(text(sql)).mappings().all()
     return [_row_to_dict(dict(r)) for r in rows]
 
 
@@ -150,6 +173,8 @@ def update_reservation(res_id: int, data: dict):
         'gender_female':     data.get('gender_female'),
         'organizer_note':    data.get('organizer_note'),
         'notes':             data.get('notes'),
+        'menu_note':         data.get('menu_note'),
+        'sales_amount':      data.get('sales_amount'),
         'assigned_tables':   data['assigned_tables'] if isinstance(data['assigned_tables'], str) else json.dumps(data['assigned_tables']),
         'status':            data.get('status', 'confirmed'),
         'updated_at':        _now(),
@@ -165,6 +190,7 @@ def update_reservation(res_id: int, data: dict):
             budget_per_person=:budget_per_person, needs_type=:needs_type,
             gender_male=:gender_male, gender_female=:gender_female,
             organizer_note=:organizer_note, notes=:notes,
+            menu_note=:menu_note, sales_amount=:sales_amount,
             assigned_tables=:assigned_tables, status=:status, updated_at=:updated_at
             WHERE id=:id
         '''), params)
@@ -175,4 +201,19 @@ def cancel_reservation(res_id: int):
         con.execute(
             text("UPDATE reservations SET status='cancelled', updated_at=:now WHERE id=:id"),
             {"now": _now(), "id": res_id}
+        )
+
+
+def set_reservation_status(res_id: int, status: str):
+    """
+    ステータスのみ更新（来店受付／来店取消のトグルなど）。
+    'visited' に切り替えた瞬間の日時を visited_at に記録し、
+    解除した場合は visited_at をクリアする（現在の状態を正しく反映するため）。
+    """
+    now = _now()
+    visited_at = now if status == 'visited' else None
+    with engine.begin() as con:
+        con.execute(
+            text("UPDATE reservations SET status=:status, visited_at=:visited_at, updated_at=:now WHERE id=:id"),
+            {"status": status, "visited_at": visited_at, "now": now, "id": res_id}
         )

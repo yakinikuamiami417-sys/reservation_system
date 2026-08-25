@@ -42,7 +42,8 @@
           <label class="form-label required fw-semibold">氏名（フルネーム）</label>
           <input type="text" name="name" class="form-control form-control-lg"
                  placeholder="山田 太郎" required autocomplete="off"
-                 value="{{ reservation.name if reservation else '' }}">
+                 value="{{ reservation.name if reservation else '' }}"
+                 onblur="loadCustomerHistory()">
         </div>
 
         <!-- 電話番号 -->
@@ -50,8 +51,13 @@
           <label class="form-label required fw-semibold">電話番号</label>
           <input type="tel" name="phone" class="form-control form-control-lg"
                  placeholder="090-0000-0000" required autocomplete="off"
-                 value="{{ reservation.phone if reservation else '' }}">
+                 value="{{ reservation.phone if reservation else '' }}"
+                 onblur="this.value = formatPhoneNumber(this.value); loadCustomerHistory();">
         </div>
+
+        <!-- ===== 顧客カルテ（過去の来店履歴・自動呼び出し） ===== -->
+        <div id="customerHistoryPanel" class="d-none mb-3 p-3 rounded border"
+             style="background:#fff8ee; border-color:var(--kirin-gold) !important"></div>
 
         <!-- 日付 & 時間 -->
         <div class="row g-3 mb-3">
@@ -142,13 +148,37 @@
         </div>
 
         <!-- 備考 -->
-        <div class="mb-1 mt-3">
+        <div class="mb-3 mt-3">
           <label class="form-label fw-semibold">
             <i class="bi bi-sticky me-1 text-secondary"></i>備考
           </label>
           <textarea name="notes" class="form-control" rows="3"
             placeholder="アレルギー・お席のご要望・記念日・その他スタッフへの申し送り事項など…">{{ reservation.notes if reservation and reservation.notes else '' }}</textarea>
           <div class="form-text text-muted">全スタッフが確認できます。詳細一覧にも表示されます。</div>
+        </div>
+
+        <!-- 食べたメニュー（来店後の記録・次回の顧客カルテに蓄積） -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold">
+            <i class="bi bi-egg-fried me-1 text-secondary"></i>ご注文・食べたメニュー
+          </label>
+          <textarea name="menu_note" class="form-control" rows="2"
+            placeholder="例）カルビ・ハラミ・冷麺、焼き加減はレアめ希望…">{{ reservation.menu_note if reservation and reservation.menu_note else '' }}</textarea>
+          <div class="form-text text-muted">次回ご来店時に「顧客カルテ」として自動で呼び出されます。</div>
+        </div>
+
+        <!-- 実績売上（会計金額） -->
+        <div class="mb-1">
+          <label class="form-label fw-semibold">
+            <i class="bi bi-cash-coin me-1 text-secondary"></i>実績売上（会計金額）
+          </label>
+          <div class="input-group" style="max-width:220px">
+            <span class="input-group-text">¥</span>
+            <input type="number" name="sales_amount" class="form-control" min="0" step="100"
+                   placeholder="12000"
+                   value="{{ reservation.sales_amount if reservation and reservation.sales_amount is not none else '' }}">
+          </div>
+          <div class="form-text text-muted">来店後の会計金額。売上ランキングの集計に使われます。</div>
         </div>
 
       </div>
@@ -444,6 +474,59 @@ function triggerCheck() {
 }
 
 // ======================================================
+// 顧客カルテ（過去の来店履歴）自動呼び出し
+// ======================================================
+function _escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+async function loadCustomerHistory() {
+  const name  = document.querySelector('input[name="name"]').value.trim();
+  const phone = document.querySelector('input[name="phone"]').value.trim();
+  const panel = document.getElementById('customerHistoryPanel');
+  if (!name && !phone) { panel.classList.add('d-none'); return; }
+
+  const params = new URLSearchParams({ name, phone });
+  {% if reservation %}params.set('exclude_id', '{{ reservation.id }}');{% endif %}
+
+  try {
+    const res  = await fetch('/api/customer-history?' + params.toString());
+    const data = await res.json();
+    if (!data.found) { panel.classList.add('d-none'); return; }
+
+    let html = `<div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+      <i class="bi bi-person-vcard-fill fs-5" style="color:var(--kirin-gold)"></i>
+      <strong>顧客カルテ：過去のご来店 ${data.visit_count}回</strong>
+      <span class="text-muted small">（前回 ${_escHtml(data.last_visit_date)}）</span>`;
+    if (data.total_sales) {
+      html += `<span class="ms-auto badge bg-success">累計 ¥${data.total_sales.toLocaleString()}</span>`;
+    }
+    html += `</div><div class="small" style="max-height:220px; overflow-y:auto">`;
+    data.visits.forEach(v => {
+      html += `<div class="border-bottom py-1">
+        <span class="fw-bold">${_escHtml(v.date)}</span>
+        <span class="text-muted">（${_escHtml(v.total_people)}名）</span>`;
+      if (v.status === 'visited') {
+        html += `<span class="badge bg-success">✅ 来店受付済</span>`;
+      }
+      if (v.sales_amount) {
+        html += `<span class="badge bg-light text-dark border ms-1">¥${Number(v.sales_amount).toLocaleString()}</span>`;
+      }
+      if (v.menu_note) html += `<div class="text-muted">🍽️ ${_escHtml(v.menu_note)}</div>`;
+      if (v.notes)     html += `<div class="text-muted">📝 ${_escHtml(v.notes)}</div>`;
+      html += `</div>`;
+    });
+    html += '</div>';
+    panel.innerHTML = html;
+    panel.classList.remove('d-none');
+  } catch (e) {
+    console.warn('顧客履歴取得エラー:', e);
+  }
+}
+
+// ======================================================
 // 席確定マップ
 // ======================================================
 const TABLE_CAP = {1:6,2:6,3:6,4:6,5:6,6:4,7:4,8:4,9:4,10:6,11:8};
@@ -651,5 +734,6 @@ document.getElementById('resForm').addEventListener('submit', function(e) {
 // ======================================================
 _renderSeatMap();   // 初期状態を描画（編集時は既存席を選択済みで表示）
 triggerCheck();     // 初回チェック実行
+loadCustomerHistory(); // 顧客カルテ初回呼び出し（編集時は氏名・電話が入力済み）
 </script>
 {% endblock %}

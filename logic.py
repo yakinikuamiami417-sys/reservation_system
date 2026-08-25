@@ -1,7 +1,7 @@
 # logic.py — 席割り当てロジック & 競合チェック
 # キリン屋 予約管理システム
-import json
-from datetime import datetime, timedelta
+import json, re
+from datetime import datetime, timedelta, date
 
 # ============================================================
 # テーブル構成定義
@@ -243,6 +243,8 @@ def get_table_status(reservations):
                     'duration_minutes':res.get('duration_minutes', 105),
                     'is_vip':          res.get('is_vip', 0),
                     'end_time':        _end_time(res['time_slot'], res.get('duration_minutes', 105)),
+                    'status':          res.get('status'),
+                    'is_visited':      res.get('status') == 'visited',
                 })
     return status
 
@@ -268,3 +270,89 @@ def get_seat_map_status(time_slot, duration, existing_list, exclude_id=None):
         'occupied': sorted(list(occupied)),
         'blocked':  sorted(list(blocked)),
     }
+
+# ============================================================
+# 顧客カルテ（履歴の自動蓄積・呼び出し）& 来店頻度・売上集計
+# ============================================================
+# 顧客の同一判定は電話番号（数字のみ正規化）を優先キーとし、
+# 電話番号が短い・未入力の場合は氏名にフォールバックする。
+
+def _normalize_phone(phone):
+    """電話番号からハイフン・空白等を除去し数字のみ返す"""
+    return re.sub(r'\D', '', phone or '')
+
+def customer_key(res):
+    """予約データから顧客の同一判定キーを生成"""
+    digits = _normalize_phone(res.get('phone'))
+    if len(digits) >= 8:
+        return 'P:' + digits
+    return 'N:' + (res.get('name') or '').strip()
+
+def get_customer_history(name, phone, all_reservations, exclude_id=None, limit=20):
+    """
+    氏名・電話番号をキーに過去の来店履歴（新しい順）を検索する。
+    予約フォーム・予約詳細画面から呼ばれる「顧客カルテ」の中核。
+    """
+    key = customer_key({'name': name, 'phone': phone})
+    matches = [
+        r for r in all_reservations
+        if customer_key(r) == key and r.get('id') != exclude_id
+    ]
+    matches.sort(key=lambda r: (r['date'], r['time_slot']), reverse=True)
+
+    total_sales = sum(r.get('sales_amount') or 0 for r in matches)
+    return {
+        'found':           len(matches) > 0,
+        'visit_count':     len(matches),
+        'last_visit_date': matches[0]['date'] if matches else None,
+        'total_sales':     total_sales,
+        'visits': [
+            {
+                'id':            r['id'],
+                'date':          r['date'],
+                'time_slot':     r['time_slot'],
+                'total_people':  r['total_people'],
+                'menu_note':     r.get('menu_note') or '',
+                'notes':         r.get('notes') or '',
+                'sales_amount':  r.get('sales_amount'),
+                'status':        r.get('status'),
+                'visited_at':    r.get('visited_at'),
+            }
+            for r in matches[:limit]
+        ],
+    }
+
+def aggregate_customer_ranking(all_reservations, since_date=None):
+    """
+    顧客（電話番号 or 氏名）単位で来店回数・売上を集計する。
+    分析・集計ページ、顧客CSVエクスポートから呼ばれる。
+    """
+    groups = {}
+    for r in all_reservations:
+        if since_date and r['date'] < since_date:
+            continue
+        key = groups.setdefault(customer_key(r), {
+            'key': customer_key(r), 'name': r['name'], 'phone': r['phone'],
+            'visit_count': 0, 'total_sales': 0,
+            'first_visit_date': r['date'], 'last_visit_date': r['date'],
+            'last_visited_at': None,
+        })
+        key['visit_count'] += 1
+        key['total_sales'] += r.get('sales_amount') or 0
+        if r['date'] >= key['last_visit_date']:
+            key['last_visit_date'] = r['date']
+            key['name']  = r['name']    # 直近の表記を採用
+            key['phone'] = r['phone']
+        if r['date'] < key['first_visit_date']:
+            key['first_visit_date'] = r['date']
+        # 実際に来店受付（チェックイン）した日時のうち最新のものを記録
+        if r.get('visited_at') and (not key['last_visited_at'] or r['visited_at'] > key['last_visited_at']):
+            key['last_visited_at'] = r['visited_at']
+
+    today = date.today()
+    customers = list(groups.values())
+    for c in customers:
+        last_dt = datetime.strptime(c['last_visit_date'], '%Y-%m-%d').date()
+        c['days_since_last_visit'] = (today - last_dt).days
+        c['avg_sales'] = round(c['total_sales'] / c['visit_count']) if c['visit_count'] else 0
+    return customers

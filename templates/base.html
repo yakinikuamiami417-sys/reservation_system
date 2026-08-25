@@ -40,6 +40,25 @@
     .res-card:hover { transform: translateX(3px); background: #fdf8f5; }
     .res-card.vip   { border-left-color: var(--kirin-gold); }
     .res-card.group { border-left-color: #5a4b8c; }
+    .res-card.visited { border-left-color: #198754; background: #f4fff8; }
+    .res-card.visited:hover { background: #e9fbf0; }
+
+    /* 来店受付トグルボタン */
+    .visit-toggle-btn {
+      border-radius: 6px; font-size: .74rem; font-weight: 700; padding: 4px 10px;
+      white-space: nowrap; line-height: 1.3;
+    }
+    .visit-toggle-btn.not-visited {
+      color: #777; background: #fff; border: 1.5px dashed #bbb;
+    }
+    .visit-toggle-btn.not-visited:hover { background: #fff8ee; border-color: var(--kirin-gold); color: #8a6d00; }
+    .visit-toggle-btn.is-visited {
+      color: #fff; background: #198754; border: 1.5px solid #198754;
+    }
+    .visit-toggle-btn.is-visited:hover { background: #146c43; }
+
+    /* テーブル状況マップ：来店済みの予約行 */
+    .seated-entry { color: #198754 !important; font-weight: 700; }
 
     /* テーブルマップ */
     .tbl-block { border: 2px solid #dee2e6; border-radius: 8px; padding: 6px 4px; text-align: center; font-size: .75rem; min-height: 70px; }
@@ -203,6 +222,16 @@
     .tt-res-block.gap-danger  { box-shadow: 0 0 0 3px #e63946, 0 1px 4px rgba(0,0,0,.2); }
     .tt-res-block.gap-caution { box-shadow: 0 0 0 2.5px #ffc107, 0 1px 4px rgba(0,0,0,.2); }
     .tt-res-block.third-warn { animation: pulse-red 1.8s ease-in-out infinite; }
+
+    /* 来店済み（着席）表示 */
+    .tt-res-block.visited { box-shadow: 0 0 0 3px #198754, 0 1px 4px rgba(0,0,0,.2); }
+    .tt-res-block .visited-check {
+      position: absolute; top: 2px; right: 3px;
+      background: #198754; color: #fff; border-radius: 50%;
+      width: 15px; height: 15px; font-size: .6rem;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,.4);
+    }
     @keyframes pulse-red {
       0%,100% { box-shadow: 0 0 0 2px rgba(230,57,70,.4); }
       50%      { box-shadow: 0 0 0 5px rgba(230,57,70,.15); }
@@ -278,10 +307,25 @@
 <nav class="navbar navbar-dark">
   <div class="container-fluid px-4">
     <a class="navbar-brand" href="/">🍖 キリン屋 予約管理</a>
-    <div class="d-flex align-items-center gap-2 ms-auto">
-      <a href="/backup/csv" class="btn btn-sm btn-outline-light" title="CSVバックアップをダウンロード">
-        <i class="bi bi-download"></i>
+    <div class="d-flex align-items-center gap-2 ms-auto flex-wrap justify-content-end row-gap-2">
+      <a href="/analytics" class="btn btn-sm btn-outline-light d-flex align-items-center gap-1" title="分析・集計">
+        <i class="bi bi-graph-up"></i>
+        <span class="d-none d-sm-inline" style="font-size:.75rem">分析</span>
       </a>
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button"
+                data-bs-toggle="dropdown" title="データ出力">
+          <i class="bi bi-download"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><h6 class="dropdown-header">予約データ</h6></li>
+          <li><a class="dropdown-item" href="/backup/csv"><i class="bi bi-filetype-csv me-2"></i>予約全件（CSV）</a></li>
+          <li><h6 class="dropdown-header">顧客データ</h6></li>
+          <li><a class="dropdown-item" href="/backup/customers/csv"><i class="bi bi-filetype-csv me-2"></i>顧客集計（CSV）</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="/backup/xlsx"><i class="bi bi-file-earmark-excel me-2"></i>全データ一括（Excel）</a></li>
+        </ul>
+      </div>
       <a href="/share" class="btn btn-sm btn-outline-light d-flex align-items-center gap-1"
          title="タブレット接続情報">
         <i class="bi bi-tablet"></i>
@@ -333,6 +377,40 @@
 {% block scripts %}{% endblock %}
 
 <script>
+// ============================================================
+// 電話番号の自動整形（全ページ共通）
+// 入力中は邪魔をせず、フォーカスが外れた時（blur）にハイフンを補う。
+// 0始まり10桁 or 11桁の国内番号のみ対象。それ以外（国際番号・入力途中など）は触らない。
+// ============================================================
+function formatPhoneNumber(raw) {
+  let trimmed = (raw || '').trim();
+  if (!trimmed) return trimmed;
+
+  // 全角数字（IME入力等）を半角に変換してから処理する
+  trimmed = trimmed.replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+
+  const digits = trimmed.replace(/[-‐－ー―\s()（）]/g, '');
+  if (!/^0\d{9,10}$/.test(digits)) return trimmed;
+
+  if (digits.length === 11 && /^0[5789]0/.test(digits)) {
+    // 携帯・IP電話: 090-1234-5678
+    return `${digits.slice(0,3)}-${digits.slice(3,7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10 && /^0120/.test(digits)) {
+    // フリーダイヤル: 0120-123-456
+    return `${digits.slice(0,4)}-${digits.slice(4,7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10 && /^0[36]/.test(digits)) {
+    // 東京03・大阪06: 03-1234-5678
+    return `${digits.slice(0,2)}-${digits.slice(2,6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 10) {
+    // その他固定電話（市外局番3桁と仮定）: 052-123-4567
+    return `${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}`;
+  }
+  return trimmed;
+}
+
 // ============================================================
 // リアルタイム同期ポーリング（全ページ共通）
 // ============================================================
