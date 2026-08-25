@@ -16,6 +16,16 @@ app.secret_key = os.environ.get('SECRET_KEY', 'kiriniya-dev-only-change-in-prod'
 
 APP_PASSWORD = os.environ.get('APP_PASSWORD', '')
 
+# ============================================================
+# DB初期化（モジュール読み込み時に実行）
+# gunicornは `if __name__ == '__main__':` を通らず app を直接読み込むため、
+# ここで呼ばないと本番環境（Render等）でテーブルが作成されない
+# ============================================================
+try:
+    init_db()
+except Exception as e:
+    print(f"[WARN] DB初期化に失敗しました: {e}")
+
 @app.before_request
 def require_auth():
     public = {'login', 'static', 'api_last_change'}
