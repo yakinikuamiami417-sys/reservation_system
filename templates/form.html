@@ -25,6 +25,34 @@
   <span id="seatNote" class="fw-bold"></span>
 </div>
 
+<!-- ===== スマート入力（電話メモ・聞き取りメモの自動振り分け） ===== -->
+<div class="card mb-4" style="border:2px solid var(--kirin-gold)">
+  <div class="card-header py-3 d-flex align-items-center gap-2 flex-wrap" style="background:#fffbea; border-bottom-color:var(--kirin-gold)">
+    <i class="bi bi-magic" style="color:#b8860b"></i>
+    <span class="fw-bold" style="color:#8a6d00">スマート入力（電話メモから自動振り分け）</span>
+  </div>
+  <div class="card-body">
+    <label class="form-label small text-muted">
+      電話で聞き取った内容をそのまま自由に入力してください（音声入力も可）
+    </label>
+    <div class="input-group mb-2">
+      <textarea id="smartMemoInput" class="form-control" rows="3"
+        placeholder="例）佐藤さん、大人2人と子供1人、電話番号は090の1234の5678、妊婦さんがいます"></textarea>
+      <button type="button" id="smartMemoVoiceBtn" data-voice-append-target="#smartMemoInput"
+              class="btn btn-outline-danger d-none" title="音声でメモを入力">
+        <i class="bi bi-mic-fill"></i>
+      </button>
+    </div>
+    <button type="button" class="btn btn-kirin" onclick="applySmartMemo()">
+      <i class="bi bi-magic me-1"></i>このメモから自動入力する
+    </button>
+    <div id="smartMemoResult" class="mt-2 small d-none"></div>
+    <div class="form-text text-muted mt-1">
+      お名前・人数・電話番号・妊婦/バースデー/アレルギー等の特記事項を解析し、下のフォームへ自動反映します。元のメモは備考欄にも残るので、解析漏れがあっても内容を確認できます。
+    </div>
+  </div>
+</div>
+
 <!-- ===== フォーム ===== -->
 <form method="POST" id="resForm" novalidate>
 <div class="row g-4">
@@ -104,7 +132,14 @@
 
         <!-- 人数カウンター -->
         <div class="mb-2">
-          <label class="form-label fw-semibold">人数</label>
+          <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+            <label class="form-label fw-semibold mb-0">人数</label>
+            <button type="button" id="peopleVoiceBtn" data-voice-people-button
+                    class="btn btn-outline-danger btn-sm d-none"
+                    title="例:「大人4人、子供2人」と話すと自動で反映されます">
+              <i class="bi bi-mic-fill"></i> 音声で入力
+            </button>
+          </div>
           <div class="d-flex align-items-center gap-4 flex-wrap">
             <!-- 大人 -->
             <div>
@@ -429,6 +464,8 @@
 
 {% block scripts %}
 <script>
+const SPECIAL_TAGS_JS = {{ SPECIAL_TAGS | tojson }};
+
 // ======================================================
 // 子供管理
 // ======================================================
@@ -488,6 +525,160 @@ function updateTotal() {
   }
 
   triggerCheck();
+}
+
+// ======================================================
+// 人数：音声入力からの自動抽出
+// 「大人4人、子供2人」「おとな四名」「4名で」などを解析し、
+// 大人カウンター・子供の行数に自動反映する。
+// ======================================================
+function parsePeopleCounts(text) {
+  const numTok = '([0-9]+|[〇零一二三四五六七八九十]+)\\s*(?:人|名)?';
+  const adultsRe = new RegExp('(?:大人|おとな|オトナ)\\s*' + numTok);
+  const kidsRe   = new RegExp('(?:子供|子ども|こども|お子様|コドモ)\\s*' + numTok);
+
+  const out = {};
+  const am = text.match(adultsRe);
+  const km = text.match(kidsRe);
+  if (am) { const n = kanjiToArabic(am[1]); if (!isNaN(n)) out.adults = n; }
+  if (km) { const n = kanjiToArabic(km[1]); if (!isNaN(n)) out.children = n; }
+
+  // 「大人」「子供」の指定なく単に「4名で」等と言った場合は大人人数として扱う
+  if (out.adults === undefined && out.children === undefined) {
+    const bm = text.match(new RegExp(numTok));
+    if (bm) { const n = kanjiToArabic(bm[1]); if (!isNaN(n)) out.adults = n; }
+  }
+  return out;
+}
+
+window.applyPeopleVoiceTranscript = function(transcript) {
+  const parsed = parsePeopleCounts(transcript);
+
+  if (parsed.adults !== undefined) {
+    const adults = Math.min(99, Math.max(1, parsed.adults));
+    document.getElementById('fAdults').value = adults;
+  }
+
+  if (parsed.children !== undefined) {
+    const target = Math.min(20, Math.max(0, parsed.children));
+    while (document.querySelectorAll('.child-row').length < target) addChild();
+    while (document.querySelectorAll('.child-row').length > target) {
+      const rows = document.querySelectorAll('.child-row');
+      removeChild(rows[rows.length - 1].querySelector('button'));
+    }
+  }
+
+  if (parsed.adults === undefined && parsed.children === undefined) {
+    alert('人数を聞き取れませんでした。「大人4人、子供2人」のように話してください。');
+    return;
+  }
+  updateTotal();
+};
+
+// ======================================================
+// スマート入力：電話メモ・聞き取りメモから各項目を自動抽出
+// お名前・人数・電話番号・特記事項タグを検出して各フォームへ反映する。
+// 判定はあくまで簡易ルールベースのため、元のメモは必ず備考欄に残し、
+// スタッフが最終確認できるようにする。
+// ======================================================
+function parseSmartMemo(text) {
+  const result = { name: null, phone: null, childAges: [], tags: [], privateRoom: false };
+
+  // お名前：「〇〇さん」「〇〇様」の直前の語を候補とする
+  const nameMatch = text.match(/([^\s、。,.\d]{1,10})(?:さん|様)/);
+  if (nameMatch) result.name = nameMatch[1];
+
+  // 電話番号：0から始まり、数字と区切り表現（-の ー空白等）が続く並びを検出
+  const phoneMatch = text.match(/0[\d０-９\-‐－ー―の\s()（）]{8,16}\d/);
+  if (phoneMatch) {
+    const formatted = formatPhoneNumber(phoneMatch[0]);
+    // 整形後にハイフン区切りになっていれば検出成功とみなす
+    if (/^0\d{1,4}-\d{1,4}-\d{3,4}$/.test(formatted)) result.phone = formatted;
+  }
+
+  // 子供の年齢（「3歳」「5歳」など、文中の年齢表現をすべて拾う）
+  result.childAges = [...text.matchAll(/(\d{1,2})\s*歳/g)]
+    .map(m => parseInt(m[1], 10))
+    .filter(n => n >= 0 && n <= 17);
+
+  // 特記事項タグ
+  if (/高齢|ご年配|お年寄り|杖|車椅子|車いす/.test(text))          result.tags.push('elderly');
+  if (/妊娠|妊婦|マタニティ/.test(text))                          result.tags.push('pregnant');
+  if (/バースデー|誕生日|記念日|サプライズ/.test(text))            result.tags.push('birthday');
+  if (/アレルギー/.test(text))                                    result.tags.push('allergy');
+  if (/(窓際|座敷|掘りごたつ).*希望|席.*(希望|お願い)/.test(text)) result.tags.push('seat_request');
+  result.privateRoom = /個室/.test(text);
+
+  return result;
+}
+
+function applySmartMemo() {
+  const text = document.getElementById('smartMemoInput').value.trim();
+  if (!text) { alert('メモを入力してください'); return; }
+
+  const parsed = parseSmartMemo(text);
+  const people = parsePeopleCounts(text);
+  const applied = [];
+
+  // お名前
+  if (parsed.name) {
+    document.querySelector('input[name="name"]').value = parsed.name;
+    applied.push(`お名前: ${parsed.name}`);
+    if (typeof loadCustomerHistory === 'function') loadCustomerHistory();
+  }
+
+  // 電話番号
+  if (parsed.phone) {
+    document.getElementById('fPhone').value = parsed.phone;
+    applied.push(`電話番号: ${parsed.phone}`);
+  }
+
+  // 人数（大人・子供） ※ 音声入力と同じロジックを再利用
+  if (people.adults !== undefined || people.children !== undefined) {
+    window.applyPeopleVoiceTranscript(text);
+    if (people.adults   !== undefined) applied.push(`大人: ${people.adults}名`);
+    if (people.children !== undefined) applied.push(`子供: ${people.children}名`);
+  }
+
+  // 子供の年齢（生成された行に先頭から反映）
+  if (parsed.childAges.length) {
+    const ageInputs = document.querySelectorAll('input[name="child_age[]"]');
+    parsed.childAges.forEach((age, i) => { if (ageInputs[i]) ageInputs[i].value = age; });
+    applied.push(`子供の年齢: ${parsed.childAges.join('・')}歳`);
+  }
+
+  // 個室希望
+  if (parsed.privateRoom) {
+    document.getElementById('swPrivate').checked = true;
+    applied.push('🚪 個室希望');
+  }
+
+  // 特記事項タグ
+  parsed.tags.forEach(key => {
+    const cb = document.getElementById('tag-' + key);
+    if (cb) {
+      cb.checked = true;
+      const t = SPECIAL_TAGS_JS[key];
+      applied.push(t ? `${t.icon} ${t.label}` : key);
+    }
+  });
+
+  // 備考：解析漏れがあっても確認できるよう、元のメモを必ず残す
+  const notesEl = document.querySelector('textarea[name="notes"]');
+  const memoLine = `📋 元メモ: ${text}`;
+  notesEl.value = notesEl.value.trim() ? (notesEl.value.trim() + '\n' + memoLine) : memoLine;
+
+  updateTotal();
+
+  const resultEl = document.getElementById('smartMemoResult');
+  resultEl.classList.remove('d-none');
+  if (applied.length) {
+    resultEl.innerHTML = '<span class="text-success fw-semibold">✅ 自動反映しました：</span>' +
+      applied.join('　/　') + '　<span class="text-muted">※内容を必ずご確認ください</span>';
+  } else {
+    resultEl.innerHTML = '<span class="text-warning fw-semibold">⚠️ 自動で判別できた項目がありませんでした。</span>' +
+      '備考欄に元のメモを残しましたので、手動でご入力ください。';
+  }
 }
 
 // ======================================================

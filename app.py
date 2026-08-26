@@ -121,12 +121,13 @@ DURATION_OPTIONS = [
 # ============================================================
 SPECIAL_TAGS = {
     'kids':         {'icon': '👶', 'label': 'お子様連れ',       'color': '#6f42c1'},
+    'elderly':      {'icon': '🧓', 'label': 'ご高齢のお客様',    'color': '#6c757d'},
     'pregnant':     {'icon': '🤰', 'label': '妊婦さんあり',      'color': '#d63384'},
     'birthday':     {'icon': '🎂', 'label': 'バースデー・記念日', 'color': '#fd7e14'},
     'allergy':      {'icon': '⚠️', 'label': 'アレルギーあり',    'color': '#dc3545'},
     'seat_request': {'icon': '🪑', 'label': 'お席のご希望あり',   'color': '#0d6efd'},
 }
-SPECIAL_TAG_CHOICES = ['pregnant', 'birthday', 'allergy', 'seat_request']  # フォームで選択可能なタグ
+SPECIAL_TAG_CHOICES = ['elderly', 'pregnant', 'birthday', 'allergy', 'seat_request']  # フォームで選択可能なタグ
 
 def active_special_tags(res: dict) -> list:
     """予約に紐づく特記タグのキー一覧（'kids' は children_info から自動付与）"""

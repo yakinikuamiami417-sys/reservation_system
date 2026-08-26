@@ -533,53 +533,90 @@ function formatPhoneNumber(raw) {
 }
 
 // ============================================================
-// 電話番号：音声入力ボタン（対応ブラウザのみ表示）
+// 音声入力：共通のマイクボタン制御（対応ブラウザのみ表示）
 // Web Speech API に対応するブラウザ（Android Chrome等）だけボタンを出す。
 // 未対応（iOS Safari等）ではボタンを消し、OS標準キーボードの音声入力に任せる。
 // ============================================================
-(function initPhoneVoiceButtons() {
-  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+const _SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-  function wire(btn) {
-    const targetSel = btn.dataset.voicePhoneTarget;
-    const targetEl  = targetSel && document.querySelector(targetSel);
-    if (!SpeechRecognitionCtor || !targetEl) { btn.remove(); return; }
+function wireVoiceButton(btn, onTranscript) {
+  if (!_SpeechRecognitionCtor) { btn.remove(); return; }
+  btn.classList.remove('d-none');
+  const idleHtml = btn.innerHTML;
 
-    btn.classList.remove('d-none');
-    const idleHtml = btn.innerHTML;
+  btn.addEventListener('click', () => {
+    const rec = new _SpeechRecognitionCtor();
+    rec.lang            = 'ja-JP';
+    rec.interimResults  = false;
+    rec.maxAlternatives = 1;
 
-    btn.addEventListener('click', () => {
-      const rec = new SpeechRecognitionCtor();
-      rec.lang            = 'ja-JP';
-      rec.interimResults  = false;
-      rec.maxAlternatives = 1;
+    btn.disabled = true;
+    btn.classList.add('voice-listening');
+    btn.innerHTML = '<i class="bi bi-mic-fill"></i>';
 
-      btn.disabled = true;
-      btn.classList.add('voice-listening');
-      btn.innerHTML = '<i class="bi bi-mic-fill"></i>';
-
-      rec.onresult = (e) => {
-        const transcript = e.results[0][0].transcript;
-        targetEl.value = formatPhoneNumber(transcript);
-        targetEl.dispatchEvent(new Event('change', { bubbles: true }));
-        targetEl.focus();
-        // フォーム側に顧客カルテ自動呼び出し等の処理があれば、blurを待たずに実行する
-        if (typeof loadCustomerHistory === 'function') loadCustomerHistory();
-      };
-      rec.onerror = () => {};
-      rec.onend = () => {
-        btn.disabled = false;
-        btn.classList.remove('voice-listening');
-        btn.innerHTML = idleHtml;
-      };
-      rec.start();
-    });
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('[data-voice-phone-target]').forEach(wire);
+    rec.onresult = (e) => onTranscript(e.results[0][0].transcript);
+    rec.onerror  = () => {};
+    rec.onend    = () => {
+      btn.disabled = false;
+      btn.classList.remove('voice-listening');
+      btn.innerHTML = idleHtml;
+    };
+    rec.start();
   });
-})();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // 電話番号欄：data-voice-phone-target で指定した入力欄に整形して反映
+  document.querySelectorAll('[data-voice-phone-target]').forEach(btn => {
+    const targetEl = document.querySelector(btn.dataset.voicePhoneTarget);
+    if (!targetEl) { btn.remove(); return; }
+    wireVoiceButton(btn, (transcript) => {
+      targetEl.value = formatPhoneNumber(transcript);
+      targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+      targetEl.focus();
+      // フォーム側に顧客カルテ自動呼び出し等の処理があれば、blurを待たずに実行する
+      if (typeof loadCustomerHistory === 'function') loadCustomerHistory();
+    });
+  });
+
+  // 人数欄：ページ側で window.applyPeopleVoiceTranscript() を定義しておけば呼ばれる
+  document.querySelectorAll('[data-voice-people-button]').forEach(btn => {
+    wireVoiceButton(btn, (transcript) => {
+      if (typeof window.applyPeopleVoiceTranscript === 'function') {
+        window.applyPeopleVoiceTranscript(transcript);
+      }
+    });
+  });
+
+  // 汎用：話した内容をそのままテキスト欄に追記（スマート入力メモ欄など）
+  document.querySelectorAll('[data-voice-append-target]').forEach(btn => {
+    const targetEl = document.querySelector(btn.dataset.voiceAppendTarget);
+    if (!targetEl) { btn.remove(); return; }
+    wireVoiceButton(btn, (transcript) => {
+      targetEl.value = targetEl.value.trim() ? (targetEl.value.trim() + '　' + transcript) : transcript;
+      targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+      targetEl.focus();
+    });
+  });
+});
+
+// ============================================================
+// 漢数字 → 算用数字 変換（0〜99程度の日常表現を想定）
+// 例: "四"→4  "十二"→12  "二十"→20  "二十三"→23  "5"→5（そのまま）
+// ============================================================
+function kanjiToArabic(str) {
+  if (/^[0-9]+$/.test(str)) return parseInt(str, 10);
+  const d = {'〇':0,'零':0,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
+  if (str.indexOf('十') === -1) {
+    return (str.length === 1 && d[str] !== undefined) ? d[str] : NaN;
+  }
+  const parts = str.split('十');
+  const tensChar = parts[0], onesChar = parts[1];
+  const tens = tensChar === '' ? 1 : d[tensChar];
+  const ones = onesChar === '' ? 0 : d[onesChar];
+  if (tens === undefined || ones === undefined) return NaN;
+  return tens * 10 + ones;
+}
 
 // ============================================================
 // ウォークイン登録（全ページ共通・氏名入力なしの最速登録）
