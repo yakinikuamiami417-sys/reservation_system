@@ -1,9 +1,12 @@
 {% extends "base.html" %}
 {% block title %}タイムテーブル {{ date_display }}{% endblock %}
 
-{% block content %}
-{# 列幅：文字拡大に合わせて100px→140pxに拡張。この値がテーブル列に関する全ての幅計算の唯一の基準。 #}
+{# 列幅：文字拡大に合わせて100px→140pxに拡張。この値がテーブル列に関する全ての幅計算の唯一の基準。
+   ブロック（content/scripts）をまたいで参照するため、必ずブロックの外（テンプレート直下）で定義する。
+   {% block %} の中で {% set %} すると、その変数は他の {% block %} からは見えない（Jinjaの仕様）。 #}
 {% set col_w = 140 %}
+
+{% block content %}
 
 <!-- ===== ヘッダー ===== -->
 <div class="d-flex align-items-center gap-2 mb-3 flex-wrap no-print">
