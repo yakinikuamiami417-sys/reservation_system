@@ -220,6 +220,9 @@ function setPrintPart(part) {
            style="left:{{ cl + 2 }}px; top:{{ res.top_px }}px; height:{{ res.height_px }}px; width:{{ col_w - 5 }}px">
         <div class="blk-name">{{ res.name }}</div>
         <div class="blk-info">{{ res.total_people }}名　{{ res.time_slot }}〜</div>
+        {% if res.children_info and res.height_px >= 42 %}
+        <div class="blk-info">子{{ res.children_info|length }}（{% for c in res.children_info %}{{ c.age }}{% if not loop.last %},{% endif %}{% endfor %}歳）</div>
+        {% endif %}
         {% if res.notes and res.height_px >= 56 %}
         <div class="blk-note">📝 {{ res.notes[:18] }}</div>
         {% endif %}

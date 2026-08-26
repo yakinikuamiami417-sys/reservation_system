@@ -61,6 +61,10 @@
       {% if reservation.private_room %}
         <span class="badge badge-priv fs-6"><i class="bi bi-door-closed me-1"></i>個室</span>
       {% endif %}
+      {% for key in active_special_tags(reservation) %}
+      {% set t = SPECIAL_TAGS[key] %}
+      <span class="badge fs-6" style="background:{{ t.color }}; color:#fff">{{ t.icon }} {{ t.label }}</span>
+      {% endfor %}
       {% if reservation.status == 'visited' %}
       <span class="ms-auto badge bg-success fs-6"><i class="bi bi-check-circle-fill me-1"></i>来店済み</span>
       {% elif reservation.status == 'cancelled' %}
@@ -131,14 +135,32 @@
     </div>
   </div>
 
-  <!-- ===== 備考カード ===== -->
-  {% if reservation.notes %}
-  <div class="card mb-4">
-    <div class="card-header py-3">
-      <i class="bi bi-sticky-fill me-2 text-secondary"></i>備考
+  <!-- ===== 特記事項カード（配慮が必要な点を一目で把握できるよう強調表示） ===== -->
+  {% set _tags = active_special_tags(reservation) %}
+  {% if _tags or reservation.notes %}
+  <div class="card mb-4" style="border:2px solid #f59e0b">
+    <div class="card-header py-3 d-flex align-items-center gap-2 flex-wrap" style="background:#fff8ee; border-bottom:2px solid #f59e0b">
+      <i class="bi bi-exclamation-triangle-fill" style="color:#e67700"></i>
+      <span class="fw-bold" style="color:#92400e">特記事項</span>
     </div>
-    <div class="card-body">
-      <div class="p-3 bg-light rounded" style="white-space:pre-wrap">{{ reservation.notes }}</div>
+    <div class="card-body" style="background:#fffdf7">
+      {% if _tags %}
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        {% for key in _tags %}
+        {% set t = SPECIAL_TAGS[key] %}
+        <span class="badge fs-6 px-3 py-2" style="background:{{ t.color }}; color:#fff">{{ t.icon }} {{ t.label }}</span>
+        {% endfor %}
+      </div>
+      {% if reservation.children_info %}
+      <div class="mb-3 text-muted">
+        👶 お子様の年齢：
+        <strong>{% for c in reservation.children_info %}{{ c.age }}歳{% if not loop.last %}、{% endif %}{% endfor %}</strong>
+      </div>
+      {% endif %}
+      {% endif %}
+      {% if reservation.notes %}
+      <div class="p-3 rounded fw-semibold" style="background:#fff3cd; border:1px solid #ffe082; white-space:pre-wrap">{{ reservation.notes }}</div>
+      {% endif %}
     </div>
   </div>
   {% endif %}

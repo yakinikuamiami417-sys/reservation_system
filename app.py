@@ -114,8 +114,35 @@ DURATION_OPTIONS = [
     (180, '3時間'),
 ]
 
+# ============================================================
+# 特記事項タグ（現場スタッフが一目で配慮点を把握できるようにする）
+# 'kids'（お子様連れ）はチェックボックスで手入力せず、children_info の
+# 有無から自動判定する（二重入力・矛盾を防ぐため）
+# ============================================================
+SPECIAL_TAGS = {
+    'kids':         {'icon': '👶', 'label': 'お子様連れ',       'color': '#6f42c1'},
+    'pregnant':     {'icon': '🤰', 'label': '妊婦さんあり',      'color': '#d63384'},
+    'birthday':     {'icon': '🎂', 'label': 'バースデー・記念日', 'color': '#fd7e14'},
+    'allergy':      {'icon': '⚠️', 'label': 'アレルギーあり',    'color': '#dc3545'},
+    'seat_request': {'icon': '🪑', 'label': 'お席のご希望あり',   'color': '#0d6efd'},
+}
+SPECIAL_TAG_CHOICES = ['pregnant', 'birthday', 'allergy', 'seat_request']  # フォームで選択可能なタグ
+
+def active_special_tags(res: dict) -> list:
+    """予約に紐づく特記タグのキー一覧（'kids' は children_info から自動付与）"""
+    tags = []
+    if res.get('children_info'):
+        tags.append('kids')
+    for t in (res.get('special_tags') or []):
+        if t in SPECIAL_TAG_CHOICES:
+            tags.append(t)
+    return tags
+
 # Jinja2グローバル関数
 app.jinja_env.globals['jp_date'] = jp_date
+app.jinja_env.globals['SPECIAL_TAGS'] = SPECIAL_TAGS
+app.jinja_env.globals['SPECIAL_TAG_CHOICES'] = SPECIAL_TAG_CHOICES
+app.jinja_env.globals['active_special_tags'] = active_special_tags
 
 # ============================================================
 # ルート: トップ（日次一覧）
@@ -1292,6 +1319,7 @@ def _parse_form(req, edit_id=None) -> tuple[dict, str | None]:
         children_info = [{"age": int(a)} for a in child_ages if a.strip().isdigit()]
         adults        = int(f.get('adults', 1))
         total         = adults + len(children_info)
+        special_tags  = [t for t in req.form.getlist('special_tags[]') if t in SPECIAL_TAG_CHOICES]
 
         d = {
             'date':              f['date'],
@@ -1313,6 +1341,7 @@ def _parse_form(req, edit_id=None) -> tuple[dict, str | None]:
             'notes':             f.get('notes', '').strip() or None,
             'menu_note':         f.get('menu_note', '').strip() or None,
             'sales_amount':      int(f['sales_amount']) if f.get('sales_amount', '').strip() else None,
+            'special_tags':      json.dumps(special_tags, ensure_ascii=False),
             'assigned_tables':   '[]',
             'status':            'confirmed',
         }

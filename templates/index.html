@@ -76,6 +76,10 @@
                   {% if res.is_vip    %}<span class="badge badge-vip" style="font-size:.85rem"><i class="bi bi-star-fill me-1"></i>VIP</span>{% endif %}
                   {% if res.is_group  %}<span class="badge badge-group text-white" style="font-size:.85rem"><i class="bi bi-people-fill me-1"></i>団体</span>{% endif %}
                   {% if res.private_room %}<span class="badge badge-priv" style="font-size:.85rem"><i class="bi bi-door-closed me-1"></i>個室</span>{% endif %}
+                  {% for key in active_special_tags(res) %}
+                  {% set t = SPECIAL_TAGS[key] %}
+                  <span class="badge" style="font-size:.85rem; background:{{ t.color }}; color:#fff">{{ t.icon }} {{ t.label }}</span>
+                  {% endfor %}
                 </div>
                 <div class="text-muted d-flex flex-wrap gap-3" style="font-size:1rem; font-weight:600">
                   <span><i class="bi bi-person-fill me-1"></i>

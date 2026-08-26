@@ -227,7 +227,7 @@
              style="left:{{ col_left + 2 }}px; top:{{ res.top_px }}px;
                     height:{{ res.height_px }}px; width:{{ col_w - 7 }}px"
              data-rid="{{ res.id }}"
-             title="{{ res.name }} 様 {{ res.total_people }}名 {{ res.time_slot }}〜{% if res.status == 'visited' %} | ✅ 来店済み{% endif %}{% if res.notes %} | 📝 {{ res.notes }}{% endif %}">
+             title="{{ res.name }} 様 {{ res.total_people }}名（大{{ res.adults }}{% if res.children_info %}・子{{ res.children_info|length }}：{% for c in res.children_info %}{{ c.age }}歳{% if not loop.last %}、{% endif %}{% endfor %}{% endif %}） {{ res.time_slot }}〜{% if res.status == 'visited' %} | ✅ 来店済み{% endif %}{% for key in active_special_tags(res) %} | {{ SPECIAL_TAGS[key].icon }} {{ SPECIAL_TAGS[key].label }}{% endfor %}{% if res.notes %} | 📝 {{ res.notes }}{% endif %}">
 
           {% if res.status == 'visited' %}
           <span class="visited-check" title="来店済み"><i class="bi bi-check-lg"></i></span>
@@ -250,20 +250,32 @@
             {% endif %}
           </div>
 
+          {% set _tags = active_special_tags(res) %}
+          {% if _tags %}
+          <div class="mb-1" style="font-size:1.15rem; line-height:1; letter-spacing:1px">
+            {% for key in _tags %}<span title="{{ SPECIAL_TAGS[key].label }}">{{ SPECIAL_TAGS[key].icon }}</span>{% endfor %}
+          </div>
+          {% endif %}
+
           <div class="tt-name">
             {{ res.name }}
             {% if res.notes %}<span style="font-size:.82rem; opacity:.85">📝</span>{% endif %}
           </div>
           <div class="tt-info">{{ res.total_people }}名</div>
           <div class="tt-info">{{ res.time_slot }}〜</div>
-          {% if res.height_px >= 130 %}
+          {% if res.children_info %}
+          <div class="tt-info">
+            子{{ res.children_info|length }}（{% for c in res.children_info %}{{ c.age }}{% if not loop.last %}・{% endif %}{% endfor %}歳）
+          </div>
+          {% endif %}
+          {% if res.height_px >= 160 %}
           <div class="tt-info">
             {{ res.duration_minutes // 60 }}h{{ '%02d'|format(res.duration_minutes % 60) }}m
             {% if res.is_vip %}<span class="ms-1">⭐</span>{% endif %}
             {% if res.is_group %}<span class="ms-1">👥</span>{% endif %}
           </div>
           {% endif %}
-          {% if res.notes and res.height_px >= 180 %}
+          {% if res.notes and res.height_px >= 210 %}
           <div class="tt-info mt-1"
                style="border-top:1px solid rgba(255,255,255,.25); padding-top:3px; white-space:normal; line-height:1.3">
             📝 {{ res.notes[:28] }}{% if res.notes|length > 28 %}…{% endif %}
@@ -549,6 +561,13 @@ const CLOSE_HOUR = 22;
 // クイック操作モーダル
 // ============================================================
 const QM_TARGET_DATE = '{{ target_date }}';
+const SPECIAL_TAGS_JS = {{ SPECIAL_TAGS | tojson }};
+function _qmActiveTags(res) {
+  const tags = [];
+  if (res.children_info && res.children_info.length) tags.push('kids');
+  (res.special_tags || []).forEach(t => { if (SPECIAL_TAGS_JS[t] && t !== 'kids') tags.push(t); });
+  return tags;
+}
 const QM_TABLE_INFO  = {
   1:{cap:6,zone:'メイン'},  2:{cap:6,zone:'メイン'},  3:{cap:6,zone:'メイン'},
   4:{cap:6,zone:'メイン'},  5:{cap:6,zone:'メイン'},  6:{cap:4,zone:'サイドA'},
@@ -601,11 +620,16 @@ async function openQuickModal(rid) {
 
 function _buildQmInfo() {
   const res   = _qmRes;
+  const tagBadges = _qmActiveTags(res).map(key => {
+    const t = SPECIAL_TAGS_JS[key];
+    return `<span class="badge" style="background:${t.color};color:#fff">${t.icon} ${t.label}</span>`;
+  }).join(' ');
   const badges = [
     res.status === 'visited' ? '<span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>来店済み</span>' : '',
     res.is_vip   ? '<span class="badge badge-vip">⭐ VIP</span>'    : '',
     res.is_group ? '<span class="badge badge-group text-white">👥 団体</span>' : '',
     res.private_room ? '<span class="badge badge-priv">🚪 個室</span>' : '',
+    tagBadges,
   ].join(' ');
   const tables = (Array.isArray(res.assigned_tables) ? res.assigned_tables : JSON.parse(res.assigned_tables||'[]'))
     .map(t => `<span class="badge bg-secondary">${t}番</span>`).join(' ');

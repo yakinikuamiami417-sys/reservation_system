@@ -20,6 +20,7 @@ def _row_to_dict(row):
     d = dict(row)
     d['children_info']   = json.loads(d.get('children_info',   '[]') or '[]')
     d['assigned_tables'] = json.loads(d.get('assigned_tables', '[]') or '[]')
+    d['special_tags']    = json.loads(d.get('special_tags',    '[]') or '[]')
     return d
 
 
@@ -45,6 +46,7 @@ def init_db():
             gender_female     INTEGER,
             organizer_note    TEXT,
             notes             TEXT,
+            special_tags      TEXT     NOT NULL DEFAULT '[]',
             assigned_tables   TEXT     NOT NULL DEFAULT '[]',
             status            TEXT     NOT NULL DEFAULT 'confirmed',
             created_at        TEXT     NOT NULL,
@@ -64,6 +66,7 @@ def init_db():
         ('visited_at',   'TEXT'),   # 来店受付（チェックイン）した日時
         ('is_deleted',   'INTEGER NOT NULL DEFAULT 0'),  # 論理削除フラグ（ゴミ箱）
         ('deleted_at',   'TEXT'),   # ゴミ箱に移動した日時
+        ('special_tags', "TEXT NOT NULL DEFAULT '[]'"),  # 特記事項タグ（妊婦・バースデー・アレルギー等）
     ]
     if _IS_PG:
         with engine.begin() as con:
@@ -131,6 +134,7 @@ def save_reservation(data: dict) -> int:
         'notes':             data.get('notes'),
         'menu_note':         data.get('menu_note'),
         'sales_amount':      data.get('sales_amount'),
+        'special_tags':      data['special_tags'] if isinstance(data.get('special_tags'), str) else json.dumps(data.get('special_tags') or [], ensure_ascii=False),
         'assigned_tables':   data['assigned_tables'] if isinstance(data['assigned_tables'], str) else json.dumps(data['assigned_tables']),
         'status':            data.get('status', 'confirmed'),
         'created_at':        now,
@@ -141,11 +145,11 @@ def save_reservation(data: dict) -> int:
         (date, time_slot, name, phone, adults, children_info, total_people,
          duration_minutes, private_room, is_vip, is_group,
          budget_per_person, needs_type, gender_male, gender_female, organizer_note,
-         notes, menu_note, sales_amount, assigned_tables, status, created_at, updated_at)
+         notes, menu_note, sales_amount, special_tags, assigned_tables, status, created_at, updated_at)
         VALUES (:date, :time_slot, :name, :phone, :adults, :children_info, :total_people,
          :duration_minutes, :private_room, :is_vip, :is_group,
          :budget_per_person, :needs_type, :gender_male, :gender_female, :organizer_note,
-         :notes, :menu_note, :sales_amount, :assigned_tables, :status, :created_at, :updated_at)
+         :notes, :menu_note, :sales_amount, :special_tags, :assigned_tables, :status, :created_at, :updated_at)
     """
     if _IS_PG:
         sql += ' RETURNING id'
@@ -247,6 +251,7 @@ def update_reservation(res_id: int, data: dict):
         'notes':             data.get('notes'),
         'menu_note':         data.get('menu_note'),
         'sales_amount':      data.get('sales_amount'),
+        'special_tags':      data['special_tags'] if isinstance(data.get('special_tags'), str) else json.dumps(data.get('special_tags') or [], ensure_ascii=False),
         'assigned_tables':   data['assigned_tables'] if isinstance(data['assigned_tables'], str) else json.dumps(data['assigned_tables']),
         'status':            data.get('status', 'confirmed'),
         'updated_at':        _now(),
@@ -262,7 +267,7 @@ def update_reservation(res_id: int, data: dict):
             budget_per_person=:budget_per_person, needs_type=:needs_type,
             gender_male=:gender_male, gender_female=:gender_female,
             organizer_note=:organizer_note, notes=:notes,
-            menu_note=:menu_note, sales_amount=:sales_amount,
+            menu_note=:menu_note, sales_amount=:sales_amount, special_tags=:special_tags,
             assigned_tables=:assigned_tables, status=:status, updated_at=:updated_at
             WHERE id=:id
         '''), params)
