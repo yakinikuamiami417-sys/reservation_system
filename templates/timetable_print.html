@@ -20,9 +20,22 @@
     .btn-c { background:#555;      color:#fff; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:.85rem; }
     @media print { .ctrl { display:none !important; } }
 
+    /* ── 印刷範囲セレクタ（ランチのみ／ディナーのみ／全ページ） ── */
+    .part-tabs { display:flex; gap:4px; background:#e9e4dc; border-radius:8px; padding:3px; margin-left:auto; }
+    .part-tab {
+      border:none; background:transparent; color:#555;
+      padding:6px 14px; border-radius:6px; cursor:pointer;
+      font-size:.82rem; font-weight:700;
+    }
+    .part-tab.active { background:var(--red); color:#fff; }
+
     /* ── ページセクション ── */
     .wrap { padding:6mm; }
     .section { margin-bottom:0; }
+    /* 画面上でも印刷範囲セレクタに応じて非表示にし、プレビューと印刷結果を一致させる */
+    body[data-print-part="lunch"]  .section:not([data-part="lunch"])  { display:none !important; }
+    body[data-print-part="dinner"] .section:not([data-part="dinner"]) { display:none !important; }
+    body[data-print-part]:not([data-print-part="all"]) .section { page-break-after:auto !important; }
     @media print {
       @page { size:A4 landscape; margin:6mm; }
       .section { page-break-after:always; }
@@ -142,9 +155,23 @@
 
 <div class="ctrl">
   <strong>🍖 キリン屋 印刷プレビュー ── {{ date_display }}</strong>
+  <div class="part-tabs">
+    <button type="button" class="part-tab" data-part="lunch"  onclick="setPrintPart('lunch')">☀️ ランチのみ</button>
+    <button type="button" class="part-tab" data-part="dinner" onclick="setPrintPart('dinner')">🌙 ディナーのみ</button>
+    <button type="button" class="part-tab active" data-part="all" onclick="setPrintPart('all')">📄 全ページ</button>
+  </div>
   <button class="btn-p" onclick="window.print()">🖨️ 印刷する</button>
   <button class="btn-c" onclick="window.close()">✕ 閉じる</button>
 </div>
+
+<script>
+function setPrintPart(part) {
+  document.body.dataset.printPart = part;
+  document.querySelectorAll('.part-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.part === part);
+  });
+}
+</script>
 
 <div class="wrap">
 
@@ -208,7 +235,7 @@
 {# ═══════════════
    ページ1: ランチ
    ═══════════════ #}
-<div class="section">
+<div class="section" data-part="lunch">
   <div class="sec-title">
     {{ date_display }}　ランチ タイムテーブル
     <span class="sec-sub">11:30 開店　13:30 LO　14:00 閉店</span>
@@ -220,7 +247,7 @@
 {# ═════════════════
    ページ2: ディナー
    ═════════════════ #}
-<div class="section" style="zoom:0.93">
+<div class="section" data-part="dinner" style="zoom:0.93">
   <div class="sec-title">
     {{ date_display }}　ディナー タイムテーブル
     <span class="sec-sub">17:00 開店　22:00 LO　23:00 閉店</span>
@@ -233,7 +260,7 @@
    ページ3: 回転サマリー ＋ ディナー手書き欄
    ※ 手書き欄はサマリーが長い場合 自動的に次ページへ
    ══════════════════════════════════════════ #}
-<div class="section">
+<div class="section" data-part="summary">
   <div class="sec-title">
     {{ date_display }}　回転サマリー
     <span class="sec-sub">合計 {{ reservations|length }}組 ／ {{ reservations|sum(attribute='total_people') }}名　最大 {{ max_groups }}組</span>
