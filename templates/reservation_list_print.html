@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>予約台帳 印刷 {{ date_display }}</title>
+  <style>
+    :root { --red:#8B1A1A; --dark:#1a1a1a; }
+    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      font-family:"BIZ UDPGothic","Yu Gothic UI","Meiryo","Hiragino Sans",
+                  "Hiragino Kaku Gothic ProN","Segoe UI",sans-serif;
+      background:#fff; color:#1a1a1a;
+    }
+
+    /* ── 画面コントロールバー（印刷時は非表示） ── */
+    .ctrl {
+      display:flex; align-items:center; gap:12px;
+      padding:10px 16px; background:#f7f4f0;
+      border-bottom:2px solid var(--red);
+      position:sticky; top:0; z-index:100;
+    }
+    .ctrl strong { color:var(--red); font-size:.95rem; }
+    .btn-p { background:var(--red); color:#fff; border:none; padding:7px 18px; border-radius:6px; cursor:pointer; font-size:.85rem; font-weight:700; }
+    .btn-c { background:#555;      color:#fff; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:.85rem; }
+    @media print { .ctrl { display:none !important; } }
+
+    /* ── ページ全体 ── */
+    .wrap { padding:8mm; }
+    @media print {
+      @page { size:A4 portrait; margin:9mm; }
+    }
+
+    .hdr {
+      display:flex; justify-content:space-between; align-items:flex-end;
+      border-bottom:3px solid var(--red); padding-bottom:6px; margin-bottom:8px;
+    }
+    .hdr h1 { font-size:1.3rem; font-weight:800; }
+    .hdr .sub { font-size:.85rem; color:#555; font-weight:600; margin-top:2px; }
+    .hdr .stat { text-align:right; font-size:.9rem; font-weight:700; }
+    .hdr .stat span { color:var(--red); font-size:1.15rem; }
+
+    /* ── 予約一覧テーブル ── */
+    table.list {
+      width:100%; border-collapse:collapse; font-size:.86rem;
+      margin-bottom:10px;
+    }
+    table.list thead { display:table-header-group; } /* 複数ページでも見出し行を反復表示 */
+    table.list th, table.list td {
+      border:1px solid #888; padding:5px 6px; vertical-align:middle;
+    }
+    table.list tr { page-break-inside:avoid; break-inside:avoid; }
+    table.list thead th {
+      background:var(--dark); color:#fff; font-size:.82rem; font-weight:700;
+      text-align:center;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    table.list td.c { text-align:center; }
+    table.list td.name { font-weight:800; font-size:.94rem; }
+    table.list td.note { font-size:.78rem; color:#444; }
+    table.list tr.visited td { background:#f4fff8; }
+    table.list tr.vip td.name::before { content:"⭐ "; }
+    table.list tr.group td.name::after { content:" 👥"; }
+    table.list td.chk { text-align:center; width:34px; }
+    table.list .chk-box {
+      display:inline-block; width:16px; height:16px;
+      border:1.6px solid #444; border-radius:2px;
+    }
+
+    .empty-note { padding:14px; text-align:center; color:#888; font-size:.9rem; border:1.5px dashed #bbb; border-radius:6px; }
+
+    /* ── 手書き飛び込み客欄 ── */
+    .walkin-block { margin-top:6px; }
+    .walkin-head {
+      font-size:.88rem; font-weight:700; padding:5px 10px;
+      background:#1a1a1a; color:#fff;
+      border-radius:4px 4px 0 0;
+      display:flex; justify-content:space-between; align-items:center;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    .walkin-head span { font-size:.74rem; font-weight:400; opacity:.85; }
+    table.walkin { width:100%; border-collapse:collapse; font-size:.84rem; }
+    table.walkin tr { page-break-inside:avoid; break-inside:avoid; }
+    table.walkin th {
+      border:1px solid #888; padding:5px 6px;
+      background:#444; color:#fff; text-align:center;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    table.walkin td { border:1px solid #999; height:28px; padding:0 6px; }
+    table.walkin .nc { text-align:center; color:#999; font-size:.74rem; background:#fafafa;
+                        -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+    /* ── 本日のキャンセル（参考・取り消し線） ── */
+    .cancel-block { margin-top:12px; page-break-inside:avoid; break-inside:avoid; }
+    .cancel-head {
+      font-size:.82rem; font-weight:700; padding:4px 9px;
+      background:#fdf2f2; border:1.5px solid #e63946; color:#8B1A1A;
+      border-radius:4px 4px 0 0;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    table.cancel { width:100%; border-collapse:collapse; font-size:.78rem; }
+    table.cancel td { border:1px solid #e6b3b3; padding:4px 6px; color:#a05; text-decoration:line-through; }
+    table.cancel td.c { text-align:center; }
+  </style>
+</head>
+<body>
+
+<div class="ctrl">
+  <strong>🍖 キリン屋 予約台帳 印刷プレビュー ── {{ date_display }}</strong>
+  <button class="btn-p" onclick="window.print()">🖨️ 印刷する</button>
+  <button class="btn-c" onclick="window.close()">✕ 閉じる</button>
+</div>
+
+<div class="wrap">
+
+  <div class="hdr">
+    <div>
+      <h1>🍖 キリン屋　予約台帳</h1>
+      <div class="sub">{{ date_display }}</div>
+    </div>
+    <div class="stat">
+      予約 <span>{{ reservations|length }}</span> 組　／　合計 <span>{{ total_guests }}</span> 名
+    </div>
+  </div>
+
+  {% if reservations %}
+  <table class="list">
+    <thead>
+      <tr>
+        <th style="width:5%">No.</th>
+        <th style="width:9%">時間</th>
+        <th style="width:20%">お名前</th>
+        <th style="width:8%">人数</th>
+        <th style="width:10%">卓番</th>
+        <th style="width:13%">電話番号</th>
+        <th>備考</th>
+        <th style="width:6%">来店</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for res in reservations %}
+      {% set row_cls = [] %}
+      {% if res.status == 'visited' %}{% set _ = row_cls.append('visited') %}{% endif %}
+      {% if res.is_vip %}{% set _ = row_cls.append('vip') %}{% endif %}
+      {% if res.is_group %}{% set _ = row_cls.append('group') %}{% endif %}
+      <tr class="{{ row_cls|join(' ') }}">
+        <td class="c">{{ loop.index }}</td>
+        <td class="c">{{ res.time_slot }}</td>
+        <td class="name">{{ res.name }} 様{% if res.private_room %}（個室）{% endif %}</td>
+        <td class="c">{{ res.total_people }}名{% if res.children_info %}<br><span style="font-size:.68rem;color:#888">大{{ res.adults }}・子{{ res.children_info|length }}</span>{% endif %}</td>
+        <td class="c">{% for t in res.assigned_tables %}{{ t }}番{% if not loop.last %}・{% endif %}{% endfor %}{% if not res.assigned_tables %}<span style="color:#bbb">未定</span>{% endif %}</td>
+        <td class="c">{{ res.phone }}</td>
+        <td class="note">
+          {%- set notes_parts = [] -%}
+          {%- if res.organizer_note %}{% set _ = notes_parts.append(res.organizer_note) %}{% endif -%}
+          {%- if res.notes %}{% set _ = notes_parts.append(res.notes) %}{% endif -%}
+          {{ notes_parts|join(' ／ ') }}
+        </td>
+        <td class="chk">
+          {% if res.status == 'visited' %}✅{% else %}<span class="chk-box"></span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-note">この日の予約はありません</div>
+  {% endif %}
+
+  <div class="walkin-block">
+    <div class="walkin-head">
+      🥩 飛び込み・当日受付欄
+      <span>手書き枠 {{ walkin_rows }}行</span>
+    </div>
+    <table class="walkin">
+      <thead>
+        <tr>
+          <th style="width:5%">No.</th>
+          <th style="width:9%">時間</th>
+          <th style="width:24%">お名前・様</th>
+          <th style="width:8%">人数</th>
+          <th style="width:10%">卓番</th>
+          <th>備考</th>
+          <th style="width:6%">来店</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in range(walkin_rows) %}
+        <tr>
+          <td class="nc">{{ reservations|length + i + 1 }}</td>
+          <td></td><td></td><td></td><td></td><td></td>
+          <td style="text-align:center"><span class="chk-box" style="border-color:#bbb"></span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if cancelled %}
+  <div class="cancel-block">
+    <div class="cancel-head">⚠️ 本日のキャンセル（{{ cancelled|length }}件・参考）</div>
+    <table class="cancel">
+      <tbody>
+        {% for res in cancelled %}
+        <tr>
+          <td class="c" style="width:9%">{{ res.time_slot }}</td>
+          <td style="width:22%">{{ res.name }} 様</td>
+          <td class="c" style="width:8%">{{ res.total_people }}名</td>
+          <td>{{ res.organizer_note or res.notes or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div><!-- /wrap -->
+</body>
+</html>

@@ -4,7 +4,7 @@
 {% block content %}
 
 <!-- ===== 日付ナビゲーション ===== -->
-<div class="d-flex flex-wrap align-items-center gap-2 mb-4">
+<div class="d-flex flex-wrap align-items-center gap-2 mb-4 no-print">
   <a href="/?date={{ prev_date }}" class="btn btn-outline-secondary btn-sm">
     <i class="bi bi-chevron-left"></i>
   </a>
@@ -19,6 +19,9 @@
          value="{{ target_date }}" onchange="location.href='/?date='+this.value">
   <a href="/timetable?date={{ target_date }}" class="btn btn-outline-dark btn-sm ms-auto">
     <i class="bi bi-calendar3 me-1"></i>タイムテーブル
+  </a>
+  <a href="/reservations/print?date={{ target_date }}" target="_blank" class="btn btn-outline-dark btn-sm">
+    <i class="bi bi-printer me-1"></i>🖨️ 印刷用レイアウト（A4）
   </a>
   <a href="/reservation/new?date={{ target_date }}" class="btn btn-kirin btn-sm">
     <i class="bi bi-plus-lg me-1"></i>新規予約
@@ -59,7 +62,7 @@
                   {% if res.status == 'visited' %}<i class="bi bi-check-lg"></i>{% endif %}
                   {{ res.time_slot }}
                 </span>
-                <div class="text-muted text-center mt-1" style="font-size:.68rem">
+                <div class="text-muted text-center mt-1" style="font-size:.82rem; font-weight:600">
                   {% set dur_h = res.duration_minutes // 60 %}
                   {% set dur_m = res.duration_minutes % 60 %}
                   {{ dur_h }}h{{ '%02d'|format(dur_m) }}m
@@ -67,14 +70,14 @@
               </div>
               <!-- 詳細 -->
               <div class="flex-grow-1 min-width-0">
-                <div class="d-flex align-items-center flex-wrap gap-1 mb-1">
-                  <strong class="fs-6">{{ res.name }} 様</strong>
-                  {% if res.status == 'visited' %}<span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>来店済み</span>{% endif %}
-                  {% if res.is_vip    %}<span class="badge badge-vip"><i class="bi bi-star-fill me-1"></i>VIP</span>{% endif %}
-                  {% if res.is_group  %}<span class="badge badge-group text-white"><i class="bi bi-people-fill me-1"></i>団体</span>{% endif %}
-                  {% if res.private_room %}<span class="badge badge-priv"><i class="bi bi-door-closed me-1"></i>個室</span>{% endif %}
+                <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+                  <strong class="fs-4">{{ res.name }} 様</strong>
+                  {% if res.status == 'visited' %}<span class="badge bg-success" style="font-size:.85rem"><i class="bi bi-check-circle-fill me-1"></i>来店済み</span>{% endif %}
+                  {% if res.is_vip    %}<span class="badge badge-vip" style="font-size:.85rem"><i class="bi bi-star-fill me-1"></i>VIP</span>{% endif %}
+                  {% if res.is_group  %}<span class="badge badge-group text-white" style="font-size:.85rem"><i class="bi bi-people-fill me-1"></i>団体</span>{% endif %}
+                  {% if res.private_room %}<span class="badge badge-priv" style="font-size:.85rem"><i class="bi bi-door-closed me-1"></i>個室</span>{% endif %}
                 </div>
-                <div class="text-muted small d-flex flex-wrap gap-3">
+                <div class="text-muted d-flex flex-wrap gap-3" style="font-size:1rem; font-weight:600">
                   <span><i class="bi bi-person-fill me-1"></i>
                     {{ res.total_people }}名（大{{ res.adults }}
                     {% if res.children_info %}・子{{ res.children_info|length }}{% endif %}）
@@ -88,7 +91,7 @@
                 {% if res.assigned_tables %}
                 <div class="mt-2">
                   {% for t in res.assigned_tables %}
-                  <span class="badge bg-light text-dark border me-1">
+                  <span class="badge bg-light text-dark border me-1" style="font-size:.95rem; padding:.4em .65em">
                     <i class="bi bi-grid-3x2-gap me-1"></i>{{ t }}番
                   </span>
                   {% endfor %}

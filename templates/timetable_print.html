@@ -21,36 +21,36 @@
     @media print { .ctrl { display:none !important; } }
 
     /* ── ページセクション ── */
-    .wrap { padding:8mm; }
+    .wrap { padding:6mm; }
     .section { margin-bottom:0; }
     @media print {
-      @page { size:A4 landscape; margin:8mm; }
+      @page { size:A4 landscape; margin:6mm; }
       .section { page-break-after:always; }
       .section:last-child { page-break-after:auto; }
     }
     .sec-title {
-      font-size:.88rem; font-weight:800; margin-bottom:5px;
+      font-size:.98rem; font-weight:800; margin-bottom:5px;
       padding-bottom:3px; border-bottom:2.5px solid var(--red);
       display:flex; justify-content:space-between; align-items:baseline;
     }
-    .sec-sub { font-size:.7rem; font-weight:400; color:#888; }
+    .sec-sub { font-size:.78rem; font-weight:600; color:#555; }
 
     /* ══════════════════════════
        タイムテーブル
     ══════════════════════════ */
-    .tt { display:flex; border:1.5px solid #dee2e6; border-radius:8px; overflow:hidden; background:#fff; }
+    .tt { display:flex; border:1.5px solid #888; border-radius:8px; overflow:hidden; background:#fff; }
 
-    .tt-axis { width:44px; min-width:44px; flex-shrink:0;
-               border-right:2px solid #dee2e6; background:#f8f9fa; }
+    .tt-axis { width:40px; min-width:40px; flex-shrink:0;
+               border-right:2px solid #888; background:#f8f9fa; }
     .tt-axis-head {
       height:40px; display:flex; align-items:center; justify-content:center;
-      font-size:.6rem; font-weight:700; background:var(--dark); color:#aaa;
-      border-bottom:2px solid #dee2e6;
+      font-size:.64rem; font-weight:700; background:var(--dark); color:#ddd;
+      border-bottom:2px solid #888;
       -webkit-print-color-adjust:exact; print-color-adjust:exact;
     }
     .tt-axis-body { position:relative; }
-    .tt-tlabel     { position:absolute; right:5px; font-size:.62rem; color:#999; transform:translateY(-50%); white-space:nowrap; }
-    .tt-tlabel.maj { color:#444; font-weight:700; font-size:.65rem; }
+    .tt-tlabel     { position:absolute; right:4px; font-size:.68rem; font-weight:600; color:#666; transform:translateY(-50%); white-space:nowrap; }
+    .tt-tlabel.maj { color:#222; font-weight:800; font-size:.74rem; }
     .tt-axis-tab   { position:absolute; left:0; width:4px; height:12px;
                      transform:translateY(-50%); border-radius:0 2px 2px 0;
                      -webkit-print-color-adjust:exact; print-color-adjust:exact; }
@@ -59,17 +59,17 @@
     .tt-hdr-row { display:flex; border-bottom:2px solid var(--red); }
     .tt-colhead {
       flex:0 0 auto; text-align:center; padding:4px 2px;
-      font-size:.68rem; font-weight:700;
+      font-size:.76rem; font-weight:800;
       background:var(--dark); color:#fff;
-      border-right:1px solid #333;
+      border-right:1px solid #555;
       -webkit-print-color-adjust:exact; print-color-adjust:exact;
     }
-    .tt-colhead-cap { font-size:.56rem; opacity:.65; font-weight:400; }
+    .tt-colhead-cap { font-size:.64rem; opacity:.8; font-weight:500; }
     .tt-body { position:relative; overflow:hidden; }
 
-    .tt-gl     { position:absolute; left:0; right:0; height:0; border-top:1px dashed #ececec; z-index:1; }
-    .tt-gl.maj { border-top:1px solid #d4d4d4; }
-    .tt-vcol   { position:absolute; top:0; width:0; border-left:1px solid #e2e2e2; z-index:1; }
+    .tt-gl     { position:absolute; left:0; right:0; height:0; border-top:1px dashed #bbb; z-index:1; }
+    .tt-gl.maj { border-top:1.3px solid #888; }
+    .tt-vcol   { position:absolute; top:0; width:0; border-left:1px solid #aaa; z-index:1; }
 
     .tt-mline  { position:absolute; left:0; right:0; height:0; z-index:8; }
     .tt-mbadge {
@@ -80,19 +80,19 @@
 
     .tt-blk {
       position:absolute; border-radius:5px; padding:4px 5px;
-      font-size:.72rem; overflow:hidden; z-index:5;
+      font-size:.78rem; overflow:hidden; z-index:5;
       -webkit-print-color-adjust:exact; print-color-adjust:exact;
     }
     .tt-blk.r1 { background:#3a52d4; color:#fff; border-left:3px solid #1f35a8; }
     .tt-blk.r2 { background:#18a89c; color:#fff; border-left:3px solid #0e7a72; }
     .tt-blk.r3 { background:#d42838; color:#fff; border-left:3px solid #a01020; }
-    .blk-name  { font-size:.76rem; font-weight:800; line-height:1.25;
+    .blk-name  { font-size:.82rem; font-weight:800; line-height:1.25;
                  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
                  text-shadow:0 0 4px rgba(0,0,0,.25); }
-    .blk-info  { font-size:.66rem; font-weight:600; line-height:1.25; opacity:.95;
+    .blk-info  { font-size:.72rem; font-weight:700; line-height:1.25; opacity:.97;
                  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
                  text-shadow:0 0 3px rgba(0,0,0,.2); }
-    .blk-note  { font-size:.58rem; opacity:.85; line-height:1.2;
+    .blk-note  { font-size:.64rem; opacity:.9; line-height:1.2;
                  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
                  border-top:1px solid rgba(255,255,255,.3); margin-top:2px; padding-top:1px; }
 
@@ -102,11 +102,11 @@
     .warn-box {
       margin-bottom:8px; padding:6px 10px;
       border:1.5px solid #e63946; border-radius:6px;
-      background:#fff5f5; font-size:.74rem;
+      background:#fff5f5; font-size:.82rem; font-weight:600;
       -webkit-print-color-adjust:exact; print-color-adjust:exact;
     }
-    .sum-tbl { width:100%; border-collapse:collapse; font-size:.76rem; }
-    .sum-tbl th, .sum-tbl td { border:1px solid #dee2e6; padding:4px 6px; }
+    .sum-tbl { width:100%; border-collapse:collapse; font-size:.84rem; }
+    .sum-tbl th, .sum-tbl td { border:1px solid #888; padding:5px 7px; }
     .sum-tbl thead th {
       background:var(--dark); color:#fff; text-align:center;
       -webkit-print-color-adjust:exact; print-color-adjust:exact;
@@ -120,21 +120,21 @@
       break-inside: avoid;
     }
     .walkin-head {
-      font-size:.78rem; font-weight:700; padding:3px 8px;
+      font-size:.84rem; font-weight:700; padding:4px 9px;
       background:#1a1a1a; color:#fff;
       border-radius:4px 4px 0 0;
       display:flex; justify-content:space-between; align-items:center;
       -webkit-print-color-adjust:exact; print-color-adjust:exact;
     }
-    .walkin-head span { font-size:.65rem; font-weight:400; opacity:.75; }
-    .walkin-tbl { width:100%; border-collapse:collapse; font-size:.72rem; }
+    .walkin-head span { font-size:.7rem; font-weight:400; opacity:.85; }
+    .walkin-tbl { width:100%; border-collapse:collapse; font-size:.8rem; }
     .walkin-tbl th {
-      border:1px solid #bbb; padding:4px 5px;
+      border:1px solid #888; padding:5px 6px;
       background:#444; color:#fff; text-align:center;
       -webkit-print-color-adjust:exact; print-color-adjust:exact;
     }
-    .walkin-tbl td  { border:1px solid #ccc; height:23px; padding:0 4px; }
-    .walkin-tbl .nc { text-align:center; color:#ccc; font-size:.65rem; background:#fafafa;
+    .walkin-tbl td  { border:1px solid #999; height:27px; padding:0 5px; }
+    .walkin-tbl .nc { text-align:center; color:#999; font-size:.7rem; background:#fafafa;
                       -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   </style>
 </head>
@@ -152,7 +152,7 @@
    マクロ: タイムテーブル描画
    ══════════════════════════════════════ #}
 {% macro draw_tt(height, labels, grid, markers, tdata) %}
-<div class="tt" style="width:{{ 44 + tables|length * col_w }}px">
+<div class="tt" style="width:{{ 40 + tables|length * col_w }}px">
   <div class="tt-axis" style="height:{{ height + 40 }}px">
     <div class="tt-axis-head">時刻</div>
     <div class="tt-axis-body" style="height:{{ height }}px">

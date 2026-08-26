@@ -595,7 +595,7 @@ def timetable_print_view():
             elif r['gap_caution']:
                 warnings.append({'type': 'caution', 'msg': f"{tid}番 {r['name']} 様 間隔{r['gap_min']}分（15〜30分）"})
 
-    col_w = 92  # A4横: 1063px - 44px軸 = 1019px ÷ 11列 ≈ 92px
+    col_w = 94  # A4横(余白6mm・軸40px): 1078px - 40px軸 = 1038px ÷ 11列 ≈ 94px
 
     # ── 飛び込み客記入欄の行数（最大40組基準） ──
     MAX_GROUPS       = 40
@@ -632,6 +632,33 @@ def timetable_print_view():
         lunch_walkin     = lunch_walkin,
         dinner_walkin    = dinner_walkin,
         max_groups       = MAX_GROUPS,
+    )
+
+# ============================================================
+# ルート: 予約一覧 印刷専用（紙の予約台帳フォーマット・A4縦）
+# ============================================================
+@app.route('/reservations/print')
+def reservations_print_view():
+    target_date = request.args.get('date', date.today().isoformat())
+    try:
+        target_dt = datetime.strptime(target_date, '%Y-%m-%d').date()
+    except ValueError:
+        target_dt = date.today(); target_date = target_dt.isoformat()
+
+    reservations = get_reservations_by_date(target_date)
+    cancelled    = get_cancelled_reservations_by_date(target_date)
+    total_guests = sum(r['total_people'] for r in reservations)
+
+    # 手書き飛び込み客欄：最大40組を基準に残り枠数ぶん空行を用意
+    MAX_GROUPS  = 40
+    walkin_rows = max(6, MAX_GROUPS - len(reservations))
+
+    return render_template('reservation_list_print.html',
+        date_display  = jp_date(target_dt),
+        reservations  = reservations,
+        cancelled     = cancelled,
+        total_guests  = total_guests,
+        walkin_rows   = walkin_rows,
     )
 
 # ============================================================
