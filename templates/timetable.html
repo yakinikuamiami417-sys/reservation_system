@@ -483,9 +483,15 @@
             <i class="bi bi-telephone me-1 text-danger"></i>電話番号
             <span class="text-muted fw-normal" style="font-size:.68rem">（省略可）</span>
           </label>
-          <input id="am-phone" type="tel" class="form-control form-control-sm"
-                 placeholder="090-XXXX-XXXX" autocomplete="off"
-                 onblur="this.value = formatPhoneNumber(this.value)">
+          <div class="input-group input-group-sm">
+            <input id="am-phone" type="text" inputmode="tel" class="form-control"
+                   placeholder="090-XXXX-XXXX" autocomplete="tel"
+                   onblur="this.value = formatPhoneNumber(this.value)">
+            <button type="button" class="btn btn-outline-danger d-none"
+                    data-voice-phone-target="#am-phone" title="音声で電話番号を入力">
+              <i class="bi bi-mic-fill"></i>
+            </button>
+          </div>
         </div>
 
         <div class="mb-2">

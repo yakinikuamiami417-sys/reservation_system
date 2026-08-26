@@ -49,10 +49,18 @@
         <!-- 電話番号 -->
         <div class="mb-3">
           <label class="form-label required fw-semibold">電話番号</label>
-          <input type="tel" name="phone" class="form-control form-control-lg"
-                 placeholder="090-0000-0000" required autocomplete="off"
-                 value="{{ reservation.phone if reservation else '' }}"
-                 onblur="this.value = formatPhoneNumber(this.value); loadCustomerHistory();">
+          <div class="input-group">
+            <input type="text" inputmode="tel" name="phone" class="form-control form-control-lg"
+                   placeholder="090-0000-0000" required autocomplete="tel"
+                   value="{{ reservation.phone if reservation else '' }}"
+                   id="fPhone"
+                   onblur="this.value = formatPhoneNumber(this.value); loadCustomerHistory();">
+            <button type="button" class="btn btn-outline-danger d-none"
+                    data-voice-phone-target="#fPhone" title="音声で電話番号を入力">
+              <i class="bi bi-mic-fill"></i>
+            </button>
+          </div>
+          <div class="form-text text-muted">🎤マークがあれば音声入力できます。「090の1234の5678」のように話しても自動で整形されます。</div>
         </div>
 
         <!-- ===== 顧客カルテ（過去の来店履歴・自動呼び出し） ===== -->

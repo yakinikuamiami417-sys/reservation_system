@@ -96,6 +96,13 @@
     .form-label.required::after { content: " *"; color: #dc3545; }
     .counter-btn { width: 34px; height: 34px; padding: 0; font-size: 1.1rem; line-height: 1; }
 
+    /* 電話番号：音声入力ボタン */
+    .voice-listening { animation: voice-pulse 1s ease-in-out infinite; }
+    @keyframes voice-pulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(220,53,69,.5); }
+      50%      { box-shadow: 0 0 0 6px rgba(220,53,69,0); }
+    }
+
     /* タイムライン */
     .timeline-row { border-bottom: 1px dashed #e0e0e0; min-height: 40px; }
     .timeline-row:hover { background: #faf8f5; }
@@ -496,7 +503,14 @@ function formatPhoneNumber(raw) {
   // 全角数字（IME入力等）を半角に変換してから処理する
   trimmed = trimmed.replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
 
-  const digits = trimmed.replace(/[-‐－ー―\s()（）]/g, '');
+  // 音声入力特有の表現を除去してから数字だけを取り出す
+  //   ・「090の2399の3336」のように読点代わりに「の」が入る
+  //   ・「ハイフン」「マイナス」と発話された語がそのまま文字起こしされる場合がある
+  //   ・ハイフン類（半角/全角/長音符/ダッシュ）や区切りの空白・括弧
+  const digits = trimmed
+    .replace(/ハイフン|マイナス/g, '')
+    .replace(/の/g, '')
+    .replace(/[-‐－ー―\s()（）]/g, '');
   if (!/^0\d{9,10}$/.test(digits)) return trimmed;
 
   if (digits.length === 11 && /^0[5789]0/.test(digits)) {
@@ -517,6 +531,55 @@ function formatPhoneNumber(raw) {
   }
   return trimmed;
 }
+
+// ============================================================
+// 電話番号：音声入力ボタン（対応ブラウザのみ表示）
+// Web Speech API に対応するブラウザ（Android Chrome等）だけボタンを出す。
+// 未対応（iOS Safari等）ではボタンを消し、OS標準キーボードの音声入力に任せる。
+// ============================================================
+(function initPhoneVoiceButtons() {
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  function wire(btn) {
+    const targetSel = btn.dataset.voicePhoneTarget;
+    const targetEl  = targetSel && document.querySelector(targetSel);
+    if (!SpeechRecognitionCtor || !targetEl) { btn.remove(); return; }
+
+    btn.classList.remove('d-none');
+    const idleHtml = btn.innerHTML;
+
+    btn.addEventListener('click', () => {
+      const rec = new SpeechRecognitionCtor();
+      rec.lang            = 'ja-JP';
+      rec.interimResults  = false;
+      rec.maxAlternatives = 1;
+
+      btn.disabled = true;
+      btn.classList.add('voice-listening');
+      btn.innerHTML = '<i class="bi bi-mic-fill"></i>';
+
+      rec.onresult = (e) => {
+        const transcript = e.results[0][0].transcript;
+        targetEl.value = formatPhoneNumber(transcript);
+        targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+        targetEl.focus();
+        // フォーム側に顧客カルテ自動呼び出し等の処理があれば、blurを待たずに実行する
+        if (typeof loadCustomerHistory === 'function') loadCustomerHistory();
+      };
+      rec.onerror = () => {};
+      rec.onend = () => {
+        btn.disabled = false;
+        btn.classList.remove('voice-listening');
+        btn.innerHTML = idleHtml;
+      };
+      rec.start();
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-voice-phone-target]').forEach(wire);
+  });
+})();
 
 // ============================================================
 // ウォークイン登録（全ページ共通・氏名入力なしの最速登録）
