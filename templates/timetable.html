@@ -39,6 +39,29 @@
   </button>
 </div>
 
+<!-- ===== 編集モード確認モーダル（ブラウザ標準confirm()がタブレットで動作しない場合があるため、
+     アプリ内モーダルで代替する） ===== -->
+<div class="modal fade" id="editModeConfirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2" style="background:#ffc107">
+        <h6 class="modal-title mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>レイアウト編集モードにしますか？</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        ON中は座席ブロックのドラッグで予約の席・時間が変更されます。<br>
+        通常業務中は誤操作の原因になるため、操作が終わったら必ずロックに戻してください。
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">キャンセル</button>
+        <button type="button" class="btn btn-warning btn-sm fw-bold" onclick="ttConfirmEditMode()">
+          編集モードにする
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== レイアウト編集モード中バナー ===== -->
 <div class="tt-edit-mode-banner mb-3 no-print">
   <i class="bi bi-exclamation-triangle-fill"></i>
@@ -1013,14 +1036,28 @@ function ttMinToSlot(m) {
 // ページ読み込みのたびに必ずロック状態から始まる（誤操作の持ち越し防止）。
 // ============================================================
 let TT_EDIT_MODE = false;
+let _editModeConfirmModal = null;
 
 function ttToggleEditMode() {
     if (!TT_EDIT_MODE) {
-        if (!confirm('レイアウト編集モードをONにしますか？\nON中は座席ブロックのドラッグで予約の席・時間が変更されます。\n通常業務中は誤操作の原因になるため、操作が終わったら必ずロックに戻してください。')) {
-            return;
+        // ブラウザ標準の confirm() は端末によって動作しない場合があるため、
+        // アプリ内のBootstrapモーダルで確認する（ON→OFFは確認不要）
+        if (!_editModeConfirmModal) {
+            _editModeConfirmModal = new bootstrap.Modal(document.getElementById('editModeConfirmModal'));
         }
+        _editModeConfirmModal.show();
+        return;
     }
-    TT_EDIT_MODE = !TT_EDIT_MODE;
+    _ttSetEditMode(false);
+}
+
+function ttConfirmEditMode() {
+    if (_editModeConfirmModal) _editModeConfirmModal.hide();
+    _ttSetEditMode(true);
+}
+
+function _ttSetEditMode(on) {
+    TT_EDIT_MODE = on;
     document.body.classList.toggle('tt-edit-mode', TT_EDIT_MODE);
     const btn = document.getElementById('ttLockToggleBtn');
     if (TT_EDIT_MODE) {
