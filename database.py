@@ -1,5 +1,5 @@
 import os, json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import create_engine, text
 
 _URL = os.environ.get('DATABASE_URL', 'sqlite:///reservations.db')
@@ -9,9 +9,12 @@ if _URL.startswith('postgres://'):
 engine = create_engine(_URL, pool_pre_ping=True)
 _IS_PG = _URL.startswith('postgresql')
 
+# クラウド（Render等）のサーバーはUTCで動いていることが多いため、
+# created_at/updated_at/visited_at等は必ず日本時間（JST）で記録する
+_JST = timezone(timedelta(hours=9))
 
 def _now():
-    return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    return datetime.now(_JST).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M:%S')
 
 
 def _row_to_dict(row):

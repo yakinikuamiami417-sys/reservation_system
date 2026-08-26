@@ -1,7 +1,14 @@
 # logic.py — 席割り当てロジック & 競合チェック
 # キリン屋 予約管理システム
 import json, re
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
+
+# クラウド（Render等）のサーバーはUTCで動いていることが多いため、
+# 「今日」の判定は必ず日本時間（JST）で行う
+_JST = timezone(timedelta(hours=9))
+
+def _today_jst() -> date:
+    return datetime.now(_JST).date()
 
 # ============================================================
 # テーブル構成定義
@@ -349,7 +356,7 @@ def aggregate_customer_ranking(all_reservations, since_date=None):
         if r.get('visited_at') and (not key['last_visited_at'] or r['visited_at'] > key['last_visited_at']):
             key['last_visited_at'] = r['visited_at']
 
-    today = date.today()
+    today = _today_jst()
     customers = list(groups.values())
     for c in customers:
         last_dt = datetime.strptime(c['last_visit_date'], '%Y-%m-%d').date()

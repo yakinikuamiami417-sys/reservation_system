@@ -2,7 +2,7 @@
 # キリン屋 予約管理システム
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, Response, session
 import json, socket, time as _time, csv, io, os, base64
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from sqlalchemy import text
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
@@ -27,6 +27,22 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'kiriniya-dev-only-change-in-prod')
 
 APP_PASSWORD = os.environ.get('APP_PASSWORD', '')
+
+# ============================================================
+# 日本時間（JST）ヘルパー
+# クラウド（Render等）のサーバーはUTCで動いていることが多く、
+# datetime.now() / date.today() をそのまま使うと実際の日本時間より
+# 9時間遅れてしまう（例: 深夜0時前後に日付が変わらない、ウォークイン
+# 登録の時刻が実際より9時間前になる等）。必ずこちらを使うこと。
+# ============================================================
+JST = timezone(timedelta(hours=9))
+
+def now_jst() -> datetime:
+    """現在の日本時間（naiveなdatetimeとして返す。DB保存済みの他の日時文字列と比較しやすくするため）"""
+    return datetime.now(JST).replace(tzinfo=None)
+
+def today_jst() -> date:
+    return now_jst().date()
 
 # ============================================================
 # DB初期化（モジュール読み込み時に実行）
@@ -193,11 +209,11 @@ app.jinja_env.globals['REGULAR_VISIT_THRESHOLD'] = REGULAR_VISIT_THRESHOLD
 # ============================================================
 @app.route('/')
 def index():
-    target_date = request.args.get('date', date.today().isoformat())
+    target_date = request.args.get('date', today_jst().isoformat())
     try:
         target_dt = datetime.strptime(target_date, '%Y-%m-%d').date()
     except ValueError:
-        target_dt   = date.today()
+        target_dt   = today_jst()
         target_date = target_dt.isoformat()
 
     reservations = get_reservations_by_date(target_date)
@@ -216,7 +232,7 @@ def index():
         next_date    = (target_dt + timedelta(days=1)).isoformat(),
         table_status = table_status,
         tables       = TABLES,
-        today        = date.today().isoformat(),
+        today        = today_jst().isoformat(),
     )
 
 # ============================================================
@@ -253,7 +269,7 @@ def new_reservation():
         flash(f"✅ 予約登録完了 ｜ {res_dict['name']} 様 ／ {seat_note}", 'success')
         return redirect(url_for('index', date=res_dict['date']))
 
-    default_date = request.args.get('date', date.today().isoformat())
+    default_date = request.args.get('date', today_jst().isoformat())
     return render_template(
         'form.html',
         mode             = 'new',
@@ -425,11 +441,11 @@ SCHEDULE_MARKERS = [
 
 @app.route('/timetable')
 def timetable():
-    target_date = request.args.get('date', date.today().isoformat())
+    target_date = request.args.get('date', today_jst().isoformat())
     try:
         target_dt = datetime.strptime(target_date, '%Y-%m-%d').date()
     except ValueError:
-        target_dt   = date.today()
+        target_dt   = today_jst()
         target_date = target_dt.isoformat()
 
     reservations = get_reservations_by_date(target_date)
@@ -571,7 +587,7 @@ def timetable():
         date_display     = jp_date(target_dt),
         prev_date        = (target_dt - timedelta(days=1)).isoformat(),
         next_date        = (target_dt + timedelta(days=1)).isoformat(),
-        today            = date.today().isoformat(),
+        today            = today_jst().isoformat(),
         tables           = TABLES,
         table_data       = table_data,
         time_labels      = time_labels,
@@ -596,11 +612,11 @@ def timetable():
 # ============================================================
 @app.route('/timetable/print')
 def timetable_print_view():
-    target_date = request.args.get('date', date.today().isoformat())
+    target_date = request.args.get('date', today_jst().isoformat())
     try:
         target_dt = datetime.strptime(target_date, '%Y-%m-%d').date()
     except ValueError:
-        target_dt = date.today(); target_date = target_dt.isoformat()
+        target_dt = today_jst(); target_date = target_dt.isoformat()
 
     reservations = get_reservations_by_date(target_date)
 
@@ -737,11 +753,11 @@ def timetable_print_view():
 # ============================================================
 @app.route('/reservations/print')
 def reservations_print_view():
-    target_date = request.args.get('date', date.today().isoformat())
+    target_date = request.args.get('date', today_jst().isoformat())
     try:
         target_dt = datetime.strptime(target_date, '%Y-%m-%d').date()
     except ValueError:
-        target_dt = date.today(); target_date = target_dt.isoformat()
+        target_dt = today_jst(); target_date = target_dt.isoformat()
 
     reservations = get_reservations_by_date(target_date)
     cancelled    = get_cancelled_reservations_by_date(target_date)
@@ -764,9 +780,9 @@ def reservations_print_view():
 # ============================================================
 def _kitchen_monitor_data() -> dict:
     """厨房モニター画面が表示する本日の集計データを計算する。常に「今日」基準。"""
-    today = date.today()
+    today = today_jst()
     today_str = today.isoformat()
-    now = datetime.now()
+    now = now_jst()
 
     reservations = get_reservations_by_date(today_str)  # キャンセルは含まれない
 
@@ -955,7 +971,7 @@ def api_quick_add():
     tables = [int(t) for t in (data.get('assigned_tables') or [])]
 
     res_dict = {
-        'date':             data.get('date', date.today().isoformat()),
+        'date':             data.get('date', today_jst().isoformat()),
         'time_slot':        data.get('time_slot', '18:00'),
         'name':             name,
         'phone':            (data.get('phone') or '').strip() or '-',
@@ -993,9 +1009,9 @@ def api_walkin():
     data = request.get_json() or {}
     adults = max(1, int(data.get('adults', 2)))
 
-    now = datetime.now()
+    now = now_jst()
     time_slot = f"{now.hour:02d}:{(now.minute // 15) * 15:02d}"
-    today_str = date.today().isoformat()
+    today_str = today_jst().isoformat()
 
     existing = get_reservations_by_date(today_str)
     tables = [int(t) for t in (data.get('assigned_tables') or [])]
@@ -1070,7 +1086,7 @@ def analytics():
     period = request.args.get('period', 'all')  # all / 30 / 90 / 365
     since_date = None
     if period != 'all':
-        since_date = (date.today() - timedelta(days=int(period))).isoformat()
+        since_date = (today_jst() - timedelta(days=int(period))).isoformat()
 
     all_res   = get_all_reservations(include_cancelled=False)
     customers = aggregate_customer_ranking(all_res, since_date=since_date)
@@ -1184,7 +1200,7 @@ def pos_import_commit():
             ],
         )
 
-    import_batch = f"{filename}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    import_batch = f"{filename}_{now_jst().strftime('%Y%m%d%H%M%S')}"
     normalized_rows, error_count = posimp.normalize_rows(rows, mapping, import_batch)
     inserted_count = insert_pos_sales(normalized_rows)
 
@@ -1297,7 +1313,7 @@ def backup_csv():
             d['created_at'], d['updated_at'],
         ])
 
-    fname = f"kiriniya_backup_{date.today().isoformat()}.csv"
+    fname = f"kiriniya_backup_{today_jst().isoformat()}.csv"
     return Response(
         '﻿' + output.getvalue(),
         mimetype='text/csv; charset=utf-8-sig',
@@ -1326,7 +1342,7 @@ def backup_customers_csv():
             c.get('last_visited_at') or '',
         ])
 
-    fname = f"kiriniya_customers_{date.today().isoformat()}.csv"
+    fname = f"kiriniya_customers_{today_jst().isoformat()}.csv"
     return Response(
         '﻿' + output.getvalue(),
         mimetype='text/csv; charset=utf-8-sig',
@@ -1354,7 +1370,7 @@ def backup_pos_csv():
             r['match_status'], r['matched_reservation_id'] or '', r['import_batch'],
         ])
 
-    fname = f"kiriniya_pos_sales_{date.today().isoformat()}.csv"
+    fname = f"kiriniya_pos_sales_{today_jst().isoformat()}.csv"
     return Response(
         '﻿' + output.getvalue(),
         mimetype='text/csv; charset=utf-8-sig',
@@ -1426,7 +1442,7 @@ def backup_xlsx():
     wb.save(buf)
     buf.seek(0)
 
-    fname = f"kiriniya_full_{date.today().isoformat()}.xlsx"
+    fname = f"kiriniya_full_{today_jst().isoformat()}.xlsx"
     return Response(
         buf.getvalue(),
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
