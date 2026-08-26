@@ -174,7 +174,8 @@
           {% set tlist = table_status.get(t_id, []) %}
           {% set has_seated = tlist | selectattr('is_visited') | list | length > 0 %}
           <div class="col">
-            <div class="tbl-block {{ 'seated' if has_seated else ('occupied' if tlist else ('buffer' if info.is_buffer else 'available')) }}">
+            <div class="tbl-block {{ 'seated' if has_seated else ('occupied' if tlist else ('buffer' if info.is_buffer else 'available')) }}"
+                 style="cursor:pointer" onclick="openTableModal({{ t_id }})">
               <div class="fw-bold" style="font-size:.8rem">{{ t_id }}番</div>
               <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席</div>
               {% for r in tlist %}
@@ -198,7 +199,8 @@
           {% set tlist = table_status.get(t_id, []) %}
           {% set has_seated = tlist | selectattr('is_visited') | list | length > 0 %}
           <div class="col-3">
-            <div class="tbl-block {{ 'seated' if has_seated else ('occupied' if tlist else 'available') }}">
+            <div class="tbl-block {{ 'seated' if has_seated else ('occupied' if tlist else 'available') }}"
+                 style="cursor:pointer" onclick="openTableModal({{ t_id }})">
               <div class="fw-bold" style="font-size:.8rem">{{ t_id }}番</div>
               <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席</div>
               {% for r in tlist %}
@@ -222,7 +224,8 @@
           {% set tlist = table_status.get(t_id, []) %}
           {% set has_seated = tlist | selectattr('is_visited') | list | length > 0 %}
           <div class="col-6">
-            <div class="tbl-block {{ 'seated' if has_seated else ('occupied' if tlist else ('buffer' if info.is_buffer else 'available')) }}">
+            <div class="tbl-block {{ 'seated' if has_seated else ('occupied' if tlist else ('buffer' if info.is_buffer else 'available')) }}"
+                 style="cursor:pointer" onclick="openTableModal({{ t_id }})">
               <div class="fw-bold" style="font-size:.8rem">{{ t_id }}番 {% if info.is_buffer %}🔒{% endif %}</div>
               <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席 {{ info.zone }}</div>
               {% for r in tlist %}
@@ -244,6 +247,9 @@
           <span>🔴 使用中</span>
           <span>🟡 バッファ(10番)</span>
           <span>🔒 優先空け</span>
+        </div>
+        <div class="text-muted mt-1" style="font-size:.68rem">
+          <i class="bi bi-hand-index-thumb me-1"></i>テーブルをタップすると手動で空席に戻せます
         </div>
       </div>
     </div>
@@ -304,10 +310,85 @@
   </div><!-- /右カラム -->
 </div>
 
+<!-- ===== テーブル操作モーダル（手動で空席に戻す） ===== -->
+<div class="modal fade" id="tableModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2" style="background:var(--kirin-dark); color:#fff">
+        <h6 class="modal-title mb-0" id="tableModalTitle">
+          <i class="bi bi-grid-3x2-gap-fill me-2"></i>テーブル操作
+        </h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="tableModalBody"></div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">閉じる</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
+const TABLE_STATUS_JS = {{ table_status | tojson }};
+let _tableModal = null;
+let _tableModalTableId = null;
+
+function openTableModal(tableId) {
+  _tableModalTableId = tableId;
+  document.getElementById('tableModalTitle').innerHTML =
+    `<i class="bi bi-grid-3x2-gap-fill me-2"></i>${tableId}番テーブル`;
+
+  const occupants = TABLE_STATUS_JS[tableId] || [];
+  const body = document.getElementById('tableModalBody');
+
+  if (occupants.length === 0) {
+    body.innerHTML = '<div class="text-success fw-semibold"><i class="bi bi-check-circle-fill me-1"></i>現在空席です</div>';
+  } else {
+    body.innerHTML = occupants.map(r => `
+      <div class="d-flex align-items-center justify-content-between gap-2 py-2 border-bottom">
+        <div>
+          <div class="fw-bold">${_escHtmlIdx(r.name)} 様 ${r.is_visited ? '<span class="badge bg-success ms-1">来店済み</span>' : ''}</div>
+          <div class="text-muted small">${_escHtmlIdx(r.time_slot)}〜${_escHtmlIdx(r.end_time)}　${r.total_people}名</div>
+        </div>
+        <button type="button" class="btn btn-outline-danger btn-sm" onclick="releaseTable(${r.id}, ${tableId})">
+          <i class="bi bi-unlock-fill me-1"></i>空席にする
+        </button>
+      </div>
+    `).join('');
+  }
+
+  if (!_tableModal) _tableModal = new bootstrap.Modal(document.getElementById('tableModal'));
+  _tableModal.show();
+}
+
+async function releaseTable(rid, tableId) {
+  if (!confirm(`${tableId}番テーブルを空席にしますか？\nこの予約から${tableId}番の割り当てだけを外します（予約自体は削除されません）。`)) return;
+  try {
+    const r = await fetch(`/api/reservation/${rid}/release-table`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table_id: tableId }),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      location.reload();
+    } else {
+      alert('エラー: ' + (data.error || '空席への変更に失敗しました'));
+    }
+  } catch (e) {
+    alert('通信エラーが発生しました');
+  }
+}
+
+function _escHtmlIdx(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
 // ======================================================
 // 来店受付トグル（一覧カードのボタンから）
 // ======================================================

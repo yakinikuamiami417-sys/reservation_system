@@ -914,6 +914,34 @@ def api_quick_edit(rid):
 
 
 # ============================================================
+# API: テーブルを手動で空席に戻す（お客様の卓移動・データのズレ対応）
+# 予約自体は削除・キャンセルせず、指定テーブルだけを assigned_tables
+# から外す。他のテーブルが割り当てられていればそちらは維持される。
+# ============================================================
+@app.route('/api/reservation/<int:rid>/release-table', methods=['POST'])
+def api_release_table(rid):
+    data = request.get_json() or {}
+    try:
+        table_id = int(data.get('table_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'テーブル番号が不正です'}), 400
+
+    res = get_reservation(rid)
+    if not res:
+        return jsonify({'ok': False, 'error': '予約が見つかりません'}), 404
+
+    tables = list(res.get('assigned_tables') or [])
+    if table_id not in tables:
+        return jsonify({'ok': False, 'error': f'{table_id}番はこの予約に割り当てられていません'}), 400
+    tables.remove(table_id)
+
+    updated = dict(res)
+    updated['assigned_tables'] = tables
+    update_reservation(rid, updated)
+    return jsonify({'ok': True, 'remaining_tables': tables})
+
+
+# ============================================================
 # API: クイック予約追加（タイムテーブルから直接作成）
 # ============================================================
 @app.route('/api/reservation/quick-add', methods=['POST'])
