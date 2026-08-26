@@ -242,6 +242,10 @@
           <span class="visited-check" title="来店済み"><i class="bi bi-check-lg"></i></span>
           {% endif %}
 
+          {% if res.is_regular_effective %}
+          <span class="regular-star" title="⭐ 常連のお客様"><i class="bi bi-star-fill"></i></span>
+          {% endif %}
+
           <!-- 回転バッジ & ギャップ表示 -->
           <div class="d-flex align-items-center gap-1 mb-1" style="flex-wrap:nowrap">
             <span class="rotation-badge">{{ res.rotation_num }}回転</span>
@@ -595,6 +599,7 @@ function _qmPrepInstructions(res) {
   const out = [];
   const ages = (res.children_info || []).map(c => c.age).filter(a => a !== undefined && a !== null);
 
+  if (ages.some(a => a === 0)) out.push({ icon: '🛏️', text: 'ベビーベッドの用意', reason: '0歳の赤ちゃんがいます' });
   if (ages.some(a => a <= 12)) out.push({ icon: '🍶', text: '子供のタレを用意', reason: '小学生以下のお子様がいます' });
   if (ages.some(a => a <= 3))  out.push({ icon: '🍴', text: 'カトラリー・小さい取り皿・スプーン・フォークを用意', reason: '3歳以下のお子様がいます' });
 
@@ -664,6 +669,7 @@ function _buildQmInfo() {
     return `<span class="badge" style="background:${t.color};color:#fff">${t.icon} ${t.label}</span>`;
   }).join(' ');
   const badges = [
+    res.is_regular_effective ? '<span class="badge" style="background:#b8860b;color:#fff">⭐ 常連</span>' : '',
     res.status === 'visited' ? '<span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>来店済み</span>' : '',
     res.is_vip   ? '<span class="badge badge-vip">⭐ VIP</span>'    : '',
     res.is_group ? '<span class="badge badge-group text-white">👥 団体</span>' : '',

@@ -18,7 +18,7 @@ from database import (
 )
 from logic import (
     assign_seats, check_time_conflict, get_table_status, get_seat_map_status,
-    get_customer_history, aggregate_customer_ranking,
+    get_customer_history, aggregate_customer_ranking, customer_key,
     match_pos_sale_groups, TABLES
 )
 import pos_import as posimp
@@ -147,6 +147,8 @@ def staff_prep_instructions(res: dict) -> list:
     out = []
     ages = [c.get('age') for c in (res.get('children_info') or []) if isinstance(c, dict) and c.get('age') is not None]
 
+    if any(a == 0 for a in ages):
+        out.append({'icon': '🛏️', 'text': 'ベビーベッドの用意', 'reason': '0歳の赤ちゃんがいます'})
     if any(a <= 12 for a in ages):
         out.append({'icon': '🍶', 'text': '子供のタレを用意', 'reason': '小学生以下のお子様がいます'})
     if any(a <= 3 for a in ages):
@@ -161,12 +163,30 @@ def staff_prep_instructions(res: dict) -> list:
 
     return out
 
+# ============================================================
+# 常連マーク（手動フラグ is_regular OR 来店回数による自動判定）
+# ============================================================
+REGULAR_VISIT_THRESHOLD = 3  # 累計来店（予約）回数がこれ以上で自動的に「常連」扱い
+
+def _mark_regular_customers(reservations: list) -> list:
+    """
+    予約リストの各要素に is_regular_effective（手動フラグ or 自動判定）を付与する。
+    リストは in-place で変更され、そのまま戻り値としても返す。
+    """
+    all_res = get_all_reservations(include_cancelled=False)
+    ranking = aggregate_customer_ranking(all_res)
+    regular_keys = {c['key'] for c in ranking if c['visit_count'] >= REGULAR_VISIT_THRESHOLD}
+    for r in reservations:
+        r['is_regular_effective'] = bool(r.get('is_regular')) or (customer_key(r) in regular_keys)
+    return reservations
+
 # Jinja2グローバル関数
 app.jinja_env.globals['jp_date'] = jp_date
 app.jinja_env.globals['SPECIAL_TAGS'] = SPECIAL_TAGS
 app.jinja_env.globals['SPECIAL_TAG_CHOICES'] = SPECIAL_TAG_CHOICES
 app.jinja_env.globals['active_special_tags'] = active_special_tags
 app.jinja_env.globals['staff_prep_instructions'] = staff_prep_instructions
+app.jinja_env.globals['REGULAR_VISIT_THRESHOLD'] = REGULAR_VISIT_THRESHOLD
 
 # ============================================================
 # ルート: トップ（日次一覧）
@@ -181,6 +201,7 @@ def index():
         target_date = target_dt.isoformat()
 
     reservations = get_reservations_by_date(target_date)
+    _mark_regular_customers(reservations)
     table_status = get_table_status(reservations)
     cancelled    = get_cancelled_reservations_by_date(target_date)
 
@@ -257,6 +278,8 @@ def view_reservation(rid):
         return redirect(url_for('trash_page'))
     all_res = get_all_reservations(include_cancelled=False)
     history = get_customer_history(res['name'], res['phone'], all_res, exclude_id=rid)
+    # 自分自身を含めた累計来店回数で常連判定（他画面の判定基準と統一）
+    res['is_regular_effective'] = bool(res.get('is_regular')) or (history['visit_count'] + 1 >= REGULAR_VISIT_THRESHOLD)
     return render_template('detail.html', reservation=res, tables=TABLES, history=history)
 
 # ============================================================
@@ -410,6 +433,7 @@ def timetable():
         target_date = target_dt.isoformat()
 
     reservations = get_reservations_by_date(target_date)
+    _mark_regular_customers(reservations)
 
     # ── インターバル圧縮 px変換 ──
     lunch_end_min    = (LUNCH_END_HOUR   - OPEN_HOUR) * 60   # 180
@@ -736,6 +760,71 @@ def reservations_print_view():
     )
 
 # ============================================================
+# 厨房用モニターモード（本日の状況をリアルタイム大画面表示）
+# ============================================================
+def _kitchen_monitor_data() -> dict:
+    """厨房モニター画面が表示する本日の集計データを計算する。常に「今日」基準。"""
+    today = date.today()
+    today_str = today.isoformat()
+    now = datetime.now()
+
+    reservations = get_reservations_by_date(today_str)  # キャンセルは含まれない
+
+    total_groups = len(reservations)
+    total_people = sum(r['total_people'] for r in reservations)
+    visited      = [r for r in reservations if r['status'] == 'visited']
+    visited_groups = len(visited)
+    visited_people = sum(r['total_people'] for r in visited)
+
+    upcoming = [r for r in reservations if r['status'] != 'visited']
+    upcoming.sort(key=lambda r: r['time_slot'])
+
+    def _to_dt(r):
+        h, m = map(int, r['time_slot'].split(':'))
+        return datetime(today.year, today.month, today.day, h, m)
+
+    next_res = None
+    for r in upcoming:
+        rt = _to_dt(r)
+        if rt >= now:
+            next_res = {
+                'name':          r['name'],
+                'time_slot':     r['time_slot'],
+                'total_people':  r['total_people'],
+                'minutes_until': round((rt - now).total_seconds() / 60),
+            }
+            break
+    if next_res is None and upcoming:
+        r = upcoming[0]
+        rt = _to_dt(r)
+        next_res = {
+            'name':          r['name'],
+            'time_slot':     r['time_slot'],
+            'total_people':  r['total_people'],
+            'minutes_until': round((rt - now).total_seconds() / 60),  # 負の値＝来店予定時刻超過
+        }
+
+    return {
+        'date_display':    jp_date(today),
+        'now':             now.strftime('%H:%M'),
+        'total_groups':    total_groups,
+        'total_people':    total_people,
+        'visited_groups':  visited_groups,
+        'visited_people':  visited_people,
+        'remaining_groups': total_groups - visited_groups,
+        'remaining_people': total_people - visited_people,
+        'next':            next_res,
+    }
+
+@app.route('/kitchen-monitor')
+def kitchen_monitor():
+    return render_template('kitchen_monitor.html', data=_kitchen_monitor_data())
+
+@app.route('/api/kitchen-monitor-data')
+def api_kitchen_monitor_data():
+    return jsonify(_kitchen_monitor_data())
+
+# ============================================================
 # API: リアルタイム競合チェック & 席提案
 # ============================================================
 @app.route('/api/check', methods=['POST'])
@@ -778,6 +867,11 @@ def api_get_reservation(rid):
     if not res:
         return jsonify({'error': '見つかりません'}), 404
     # assigned_tables / children_info はすでにリスト型で返ってくる
+    all_res = get_all_reservations(include_cancelled=False)
+    ranking = aggregate_customer_ranking(all_res)
+    key = customer_key(res)
+    entry = next((c for c in ranking if c['key'] == key), None)
+    res['is_regular_effective'] = bool(res.get('is_regular')) or (bool(entry) and entry['visit_count'] >= REGULAR_VISIT_THRESHOLD)
     return jsonify(res)
 
 
@@ -1379,6 +1473,7 @@ def _parse_form(req, edit_id=None) -> tuple[dict, str | None]:
             'duration_minutes':  int(f.get('duration_minutes', 105)),
             'private_room':      1 if 'private_room' in f else 0,
             'is_vip':            1 if 'is_vip' in f else 0,
+            'is_regular':        1 if 'is_regular' in f else 0,
             'is_group':          1 if total >= 8 else 0,
             'budget_per_person': int(f['budget_per_person']) if f.get('budget_per_person', '').strip() else None,
             'needs_type':        f.get('needs_type') or None,

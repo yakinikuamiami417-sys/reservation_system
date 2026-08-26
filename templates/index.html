@@ -72,6 +72,7 @@
               <div class="flex-grow-1 min-width-0">
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
                   <strong class="fs-4">{{ res.name }} 様</strong>
+                  {% if res.is_regular_effective %}<span class="badge" style="font-size:.85rem; background:#b8860b; color:#fff"><i class="bi bi-star-fill me-1"></i>⭐ 常連</span>{% endif %}
                   {% if res.status == 'visited' %}<span class="badge bg-success" style="font-size:.85rem"><i class="bi bi-check-circle-fill me-1"></i>来店済み</span>{% endif %}
                   {% if res.is_vip    %}<span class="badge badge-vip" style="font-size:.85rem"><i class="bi bi-star-fill me-1"></i>VIP</span>{% endif %}
                   {% if res.is_group  %}<span class="badge badge-group text-white" style="font-size:.85rem"><i class="bi bi-people-fill me-1"></i>団体</span>{% endif %}

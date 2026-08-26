@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>厨房モニター — キリン屋</title>
+  <style>
+    :root {
+      --gold: #d4af37;
+      --green: #2ec4b6;
+      --red: #e63946;
+      --bg: #0a0a0a;
+      --panel: #161616;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%; background: var(--bg); color: #fff;
+      font-family: "BIZ UDPGothic", "Yu Gothic UI", "Meiryo", "Hiragino Sans",
+                   "Hiragino Kaku Gothic ProN", "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+    .wrap {
+      height: 100vh; display: flex; flex-direction: column;
+      padding: clamp(14px, 2.2vw, 32px);
+      gap: clamp(12px, 1.8vh, 24px);
+    }
+
+    /* ヘッダー */
+    .hdr {
+      display: flex; align-items: baseline; justify-content: space-between;
+      border-bottom: 3px solid var(--gold); padding-bottom: 10px;
+      flex-wrap: wrap; gap: 8px;
+    }
+    .hdr .title { font-size: clamp(1.1rem, 2.2vw, 1.6rem); font-weight: 800; color: var(--gold); letter-spacing: 2px; }
+    .hdr .date  { font-size: clamp(1rem, 1.8vw, 1.3rem); color: #ccc; margin-left: 14px; }
+    .hdr .clock { font-size: clamp(1.8rem, 4vw, 3rem); font-weight: 800; font-variant-numeric: tabular-nums; }
+
+    /* 次のご来店（最優先で最も大きく） */
+    .next-box {
+      background: var(--panel); border: 3px solid var(--gold); border-radius: 18px;
+      padding: clamp(14px, 2.4vh, 28px) clamp(18px, 3vw, 40px);
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+      gap: clamp(10px, 2vw, 24px);
+    }
+    .next-box.overdue { border-color: var(--red); animation: pulse-overdue 1.4s ease-in-out infinite; }
+    .next-box.empty   { border-color: #444; }
+    @keyframes pulse-overdue {
+      0%,100% { box-shadow: 0 0 0 0 rgba(230,57,70,.55); }
+      50%      { box-shadow: 0 0 0 14px rgba(230,57,70,0); }
+    }
+    .next-label { font-size: clamp(1.1rem, 2.2vw, 1.6rem); font-weight: 700; color: #bbb; letter-spacing: 3px; }
+    .next-name  { font-size: clamp(1.4rem, 3vw, 2.2rem); font-weight: 800; margin-top: 4px; }
+    .next-time  { font-size: clamp(2.4rem, 6vw, 4.2rem); font-weight: 900; font-variant-numeric: tabular-nums; color: var(--gold); }
+    .next-countdown { font-size: clamp(1.8rem, 4.5vw, 3.4rem); font-weight: 900; text-align: center; }
+    .next-countdown .num { font-variant-numeric: tabular-nums; }
+    .next-countdown.overdue-text { color: var(--red); }
+    .next-people {
+      font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 900; text-align: center;
+      background: rgba(212,175,55,.12); border-radius: 14px; padding: 6px 22px;
+    }
+    .next-people small { display: block; font-size: .32em; font-weight: 700; color: #ccc; letter-spacing: 2px; }
+
+    /* カウンター群 */
+    .counters {
+      flex: 1; display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: clamp(10px, 1.6vw, 20px); min-height: 0;
+    }
+    .ctile {
+      background: var(--panel); border-radius: 18px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      border: 2px solid #2a2a2a;
+    }
+    .ctile .label {
+      font-size: clamp(1rem, 1.7vw, 1.4rem); font-weight: 700; color: #aaa;
+      letter-spacing: 2px; margin-bottom: 6px;
+    }
+    .ctile .value {
+      font-size: clamp(3.2rem, 9vw, 7.5rem); font-weight: 900; line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+    .ctile .unit { font-size: clamp(1.1rem, 2vw, 1.6rem); font-weight: 700; color: #999; margin-top: 4px; }
+    .ctile.remaining .value { color: var(--gold); }
+    .ctile.remaining-people .value { color: var(--gold); }
+    .ctile.total .value { color: #fff; }
+    .ctile.visited .value { color: var(--green); }
+
+    /* 進捗バー */
+    .progress-wrap { padding: 0 4px; }
+    .progress-bar-bg { background: #222; border-radius: 20px; height: clamp(14px, 2vh, 22px); overflow: hidden; }
+    .progress-bar-fg { background: linear-gradient(90deg, var(--green), #21a99d); height: 100%; width: 0%; transition: width 1s ease; }
+    .progress-label { text-align: center; font-size: clamp(.9rem, 1.4vw, 1.1rem); color: #999; margin-top: 6px; font-weight: 600; }
+
+    .offline-note {
+      position: fixed; bottom: 10px; right: 16px; font-size: .8rem; color: #666;
+    }
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <div class="hdr">
+    <div>
+      <span class="title">🍖 キリン屋 厨房モニター</span>
+      <span class="date" id="dateDisplay">{{ data.date_display }}</span>
+    </div>
+    <div class="clock" id="clock">--:--</div>
+  </div>
+
+  <div class="next-box" id="nextBox">
+    <div>
+      <div class="next-label">▶ 次のご来店</div>
+      <div class="next-name" id="nextName">—</div>
+      <div class="next-time" id="nextTime">--:--</div>
+    </div>
+    <div class="next-countdown" id="nextCountdown">
+      <div class="num" id="nextCountdownNum">--</div>
+    </div>
+    <div class="next-people" id="nextPeopleBox">
+      <small>人数</small>
+      <span id="nextPeople">-</span>名
+    </div>
+  </div>
+
+  <div class="counters">
+    <div class="ctile remaining">
+      <div class="label">残り組数</div>
+      <div class="value" id="remainingGroups">-</div>
+      <div class="unit">組</div>
+    </div>
+    <div class="ctile remaining-people">
+      <div class="label">残り人数</div>
+      <div class="value" id="remainingPeople">-</div>
+      <div class="unit">名</div>
+    </div>
+    <div class="ctile total">
+      <div class="label">本日 総予約</div>
+      <div class="value" id="totalGroups">-</div>
+      <div class="unit" id="totalPeopleUnit">組 / - 名</div>
+    </div>
+    <div class="ctile visited">
+      <div class="label">来店済み</div>
+      <div class="value" id="visitedGroups">-</div>
+      <div class="unit" id="visitedPeopleUnit">組 / - 名</div>
+    </div>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-bar-bg"><div class="progress-bar-fg" id="progressBar"></div></div>
+    <div class="progress-label" id="progressLabel">来店受付 0 / 0 組</div>
+  </div>
+
+</div>
+
+<div class="offline-note" id="offlineNote" style="display:none">⚠️ データ取得に失敗しました。再試行中…</div>
+
+<script>
+const INITIAL_DATA = {{ data | tojson }};
+
+function renderClock() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  document.getElementById('clock').textContent = `${hh}:${mm}:${ss}`;
+}
+setInterval(renderClock, 1000);
+renderClock();
+
+function renderData(data) {
+  document.getElementById('dateDisplay').textContent = data.date_display;
+
+  document.getElementById('remainingGroups').textContent = data.remaining_groups;
+  document.getElementById('remainingPeople').textContent = data.remaining_people;
+  document.getElementById('totalGroups').textContent     = data.total_groups;
+  document.getElementById('totalPeopleUnit').textContent = `組 / ${data.total_people} 名`;
+  document.getElementById('visitedGroups').textContent   = data.visited_groups;
+  document.getElementById('visitedPeopleUnit').textContent = `組 / ${data.visited_people} 名`;
+
+  const pct = data.total_groups > 0 ? Math.round(data.visited_groups / data.total_groups * 100) : 0;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent =
+    `来店受付 ${data.visited_groups} / ${data.total_groups} 組（${pct}%）`;
+
+  const box = document.getElementById('nextBox');
+  box.classList.remove('overdue', 'empty');
+  const countdownEl = document.getElementById('nextCountdown');
+  countdownEl.classList.remove('overdue-text');
+
+  if (!data.next) {
+    box.classList.add('empty');
+    document.getElementById('nextName').textContent = '本日の残りご予約はありません';
+    document.getElementById('nextTime').textContent = '--:--';
+    document.getElementById('nextCountdownNum').textContent = '－';
+    document.getElementById('nextPeople').textContent = '-';
+    return;
+  }
+
+  document.getElementById('nextName').textContent = data.next.name + ' 様';
+  document.getElementById('nextTime').textContent  = data.next.time_slot;
+  document.getElementById('nextPeople').textContent = data.next.total_people;
+
+  const m = data.next.minutes_until;
+  if (m < 0) {
+    box.classList.add('overdue');
+    countdownEl.classList.add('overdue-text');
+    document.getElementById('nextCountdownNum').innerHTML = `${Math.abs(m)}分超過`;
+  } else if (m === 0) {
+    document.getElementById('nextCountdownNum').textContent = 'まもなく';
+  } else {
+    document.getElementById('nextCountdownNum').innerHTML = `あと${m}分`;
+  }
+}
+
+async function pollData() {
+  try {
+    const r = await fetch('/api/kitchen-monitor-data', { cache: 'no-store' });
+    if (!r.ok) throw new Error('bad status');
+    const data = await r.json();
+    renderData(data);
+    document.getElementById('offlineNote').style.display = 'none';
+  } catch (e) {
+    document.getElementById('offlineNote').style.display = 'block';
+  }
+}
+
+renderData(INITIAL_DATA);
+setInterval(pollData, 20000);
+</script>
+
+</body>
+</html>

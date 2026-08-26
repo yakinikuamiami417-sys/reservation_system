@@ -267,7 +267,7 @@
           </label>
         </div>
 
-        <div class="form-check form-switch">
+        <div class="form-check form-switch mb-3">
           <input class="form-check-input" type="checkbox" id="swVip" name="is_vip"
                  role="switch"
                  {{ 'checked' if reservation and reservation.is_vip else '' }}>
@@ -277,6 +277,23 @@
             </span>
             <small class="d-block text-muted">ONにすると入店時間の警告を無視して登録できます</small>
           </label>
+        </div>
+
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="swRegular" name="is_regular"
+                 role="switch" onchange="this.dataset.userTouched='1'"
+                 {{ 'checked' if reservation and reservation.is_regular else '' }}>
+          <label class="form-check-label" for="swRegular">
+            <span class="fw-bold" style="color:#b8860b">
+              <i class="bi bi-star-fill me-1"></i>⭐ 常連のお客様
+            </span>
+            <small class="d-block text-muted">
+              過去{{ REGULAR_VISIT_THRESHOLD }}回以上のご来店で自動判定されますが、それ未満でも手動でONにできます
+            </small>
+          </label>
+        </div>
+        <div id="regularSuggest" class="alert alert-warning py-2 px-3 mt-2 d-none" style="font-size:.85rem">
+          ⭐ 過去のご来店履歴から常連のお客様と判定し、自動でONにしました。
         </div>
 
       </div>
@@ -600,6 +617,10 @@ function parseSmartMemo(text) {
   result.childAges = [...text.matchAll(/(\d{1,2})\s*歳/g)]
     .map(m => parseInt(m[1], 10))
     .filter(n => n >= 0 && n <= 17);
+  // 「赤ちゃん」等、年齢表現がなくても0歳児連れと分かる言い回しを拾う
+  if (/赤ちゃん|赤ん坊|乳児/.test(text) && !result.childAges.includes(0)) {
+    result.childAges.push(0);
+  }
 
   // 特記事項タグ
   if (/高齢|ご年配|お年寄り|杖|車椅子|車いす/.test(text))          result.tags.push('elderly');
@@ -712,7 +733,20 @@ async function loadCustomerHistory() {
   try {
     const res  = await fetch('/api/customer-history?' + params.toString());
     const data = await res.json();
-    if (!data.found) { panel.classList.add('d-none'); return; }
+    if (!data.found) {
+      panel.classList.add('d-none');
+      document.getElementById('regularSuggest').classList.add('d-none');
+      return;
+    }
+
+    // 常連自動判定：今回の予約を含めた累計来店回数がしきい値以上ならONを提案する
+    // （スタッフが手動でOFFにした後は、再度ここで勝手にONへ戻さない）
+    const regularBox = document.getElementById('swRegular');
+    const regularSuggest = document.getElementById('regularSuggest');
+    if (data.visit_count + 1 >= {{ REGULAR_VISIT_THRESHOLD }} && !regularBox.dataset.userTouched) {
+      regularBox.checked = true;
+      regularSuggest.classList.remove('d-none');
+    }
 
     let html = `<div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
       <i class="bi bi-person-vcard-fill fs-5" style="color:var(--kirin-gold)"></i>

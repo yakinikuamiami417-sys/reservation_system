@@ -294,6 +294,15 @@
       50%      { box-shadow: 0 0 0 5px rgba(230,57,70,.15); }
     }
 
+    /* 常連バッジ（左上：来店済みチェック[右上]と対称の位置） */
+    .tt-res-block .regular-star {
+      position: absolute; top: 3px; left: 4px;
+      background: #b8860b; color: #fff; border-radius: 50%;
+      width: 20px; height: 20px; font-size: .78rem;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,.4);
+    }
+
     /* 予約者名・人数・時間：可読性最優先で大きく太く */
     .tt-name { font-weight:800; font-size:1.08rem; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .tt-info { font-size:1.18rem; font-weight:800; opacity:1; line-height:1.3; letter-spacing:.2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -367,6 +376,10 @@
   <div class="container-fluid px-4">
     <a class="navbar-brand" href="/">🍖 キリン屋 予約管理</a>
     <div class="d-flex align-items-center gap-2 ms-auto flex-wrap justify-content-end row-gap-2">
+      <a href="/kitchen-monitor" target="_blank" class="btn btn-sm btn-outline-light d-flex align-items-center gap-1" title="厨房用モニターモード（別タブで開いて常時表示）">
+        <i class="bi bi-display"></i>
+        <span class="d-none d-sm-inline" style="font-size:.75rem">厨房モニター</span>
+      </a>
       <a href="/analytics" class="btn btn-sm btn-outline-light d-flex align-items-center gap-1" title="分析・集計">
         <i class="bi bi-graph-up"></i>
         <span class="d-none d-sm-inline" style="font-size:.75rem">分析</span>
