@@ -207,6 +207,14 @@
         </div>
         {% endfor %}
 
+        <!-- 団体様の連結ブリッジ（隣接テーブルにまたがる予約を視覚的に連結） -->
+        {% for gb in group_bridges %}
+        <div style="position:absolute; left:{{ gb.col_index * col_w + col_w - 5 }}px; top:{{ gb.top_px }}px;
+                    width:7px; height:{{ gb.height_px }}px; z-index:9; pointer-events:none;
+                    background:#ffc107; border-top:2px solid #b8860b; border-bottom:2px solid #b8860b;"
+             title="連結テーブル"></div>
+        {% endfor %}
+
         <!-- 各テーブルの予約ブロック -->
         {% for t_id, info in tables.items() %}
         {% set col_left = loop.index0 * col_w %}
@@ -223,7 +231,8 @@
         <div class="tt-res-block r{{ res.rotation_num }}
              {% if res.gap_danger %}gap-danger{% elif res.gap_caution %}gap-caution{% endif %}
              {% if res.warn_3rd %}third-warn{% endif %}
-             {% if res.status == 'visited' %}visited{% endif %}"
+             {% if res.status == 'visited' %}visited{% endif %}
+             {% if res.assigned_tables|length > 1 %}linked-group{% endif %}"
              style="left:{{ col_left + 2 }}px; top:{{ res.top_px }}px;
                     height:{{ res.height_px }}px; width:{{ col_w - 7 }}px"
              data-rid="{{ res.id }}"
@@ -249,6 +258,12 @@
             <span class="gap-badge" style="background:#e63946">🔴 注意</span>
             {% endif %}
           </div>
+
+          {% if res.assigned_tables|length > 1 %}
+          <div class="link-group-badge mb-1" title="{{ res.assigned_tables|length }}卓連結">
+            🔗 {% for t in res.assigned_tables %}{{ t }}番{% if not loop.last %}・{% endif %}{% endfor %}
+          </div>
+          {% endif %}
 
           {% set _tags = active_special_tags(res) %}
           {% if _tags %}
@@ -574,6 +589,24 @@ function _qmActiveTags(res) {
   (res.special_tags || []).forEach(t => { if (SPECIAL_TAGS_JS[t] && t !== 'kids') tags.push(t); });
   return tags;
 }
+
+// 属性別スタッフ準備指示（app.py の staff_prep_instructions と同じルール）
+function _qmPrepInstructions(res) {
+  const out = [];
+  const ages = (res.children_info || []).map(c => c.age).filter(a => a !== undefined && a !== null);
+
+  if (ages.some(a => a <= 12)) out.push({ icon: '🍶', text: '子供のタレを用意', reason: '小学生以下のお子様がいます' });
+  if (ages.some(a => a <= 3))  out.push({ icon: '🍴', text: 'カトラリー・小さい取り皿・スプーン・フォークを用意', reason: '3歳以下のお子様がいます' });
+
+  const tags = res.special_tags || [];
+  if (tags.includes('pregnant')) {
+    out.push({ icon: '🪑', text: '座布団（クッションなど）が必要', reason: '妊婦様がいらっしゃいます' });
+    out.push({ icon: '🍚', text: '安産米が必要', reason: '妊婦様がいらっしゃいます' });
+  }
+  if (tags.includes('elderly')) out.push({ icon: '💺', text: '座椅子が必要かを確認する', reason: 'ご高齢のお客様がいらっしゃいます' });
+
+  return out;
+}
 const QM_TABLE_INFO  = {
   1:{cap:6,zone:'メイン'},  2:{cap:6,zone:'メイン'},  3:{cap:6,zone:'メイン'},
   4:{cap:6,zone:'メイン'},  5:{cap:6,zone:'メイン'},  6:{cap:4,zone:'サイドA'},
@@ -637,8 +670,22 @@ function _buildQmInfo() {
     res.private_room ? '<span class="badge badge-priv">🚪 個室</span>' : '',
     tagBadges,
   ].join(' ');
-  const tables = (Array.isArray(res.assigned_tables) ? res.assigned_tables : JSON.parse(res.assigned_tables||'[]'))
-    .map(t => `<span class="badge bg-secondary">${t}番</span>`).join(' ');
+  const tableArr = Array.isArray(res.assigned_tables) ? res.assigned_tables : JSON.parse(res.assigned_tables||'[]');
+  const tables = tableArr.map(t => `<span class="badge bg-secondary">${t}番</span>`).join(' ');
+  const linkNote = tableArr.length > 1
+    ? `<div class="mt-1"><span class="link-group-badge">🔗 ${tableArr.length}卓連結（${tableArr.map(t => t + '番').join('・')}）</span></div>`
+    : '';
+
+  const prep = _qmPrepInstructions(res);
+  const prepHtml = prep.length ? `
+    <div class="mt-2 p-2 rounded" style="background:#fff0f0; border:2px dashed #e63946">
+      <div class="fw-bold small mb-1" style="color:#c1121f"><i class="bi bi-clipboard-check-fill me-1"></i>スタッフ準備指示</div>
+      <ul class="mb-0 ps-3 small">
+        ${prep.map(p => `<li class="fw-semibold" style="color:#8a1418">${p.icon} ${p.text}
+          <span class="text-muted fw-normal">（${p.reason}）</span></li>`).join('')}
+      </ul>
+    </div>` : '';
+
   document.getElementById('qm-info').innerHTML = `
     <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
       <span class="badge-time">${res.time_slot}</span>
@@ -647,7 +694,9 @@ function _buildQmInfo() {
     </div>
     <div class="text-muted small">
       ${res.total_people}名（大人${res.adults}名）　${res.duration_minutes}分　${tables || '席未定'}
-    </div>`;
+    </div>
+    ${linkNote}
+    ${prepHtml}`;
 
   // 来店受付ボタンの表示切り替え
   const visitBtn = document.getElementById('qm-visit-btn');

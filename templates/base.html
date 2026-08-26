@@ -272,6 +272,14 @@
     .tt-res-block.gap-caution { box-shadow: 0 0 0 2.5px #ffc107, 0 1px 4px rgba(0,0,0,.2); }
     .tt-res-block.third-warn { animation: pulse-red 1.8s ease-in-out infinite; }
 
+    /* 複数テーブル連結（団体様）：box-shadow系の警告表示と競合しないよう outline を使用 */
+    .tt-res-block.linked-group { outline: 2px dashed #b8860b; outline-offset: 2px; }
+    .link-group-badge {
+      display: inline-block; background: #ffc107; color: #1a1a1a;
+      border-radius: 4px; padding: 1px 7px; font-size: .78rem; font-weight: 800;
+      white-space: nowrap;
+    }
+
     /* 来店済み（着席）表示 */
     .tt-res-block.visited { box-shadow: 0 0 0 3px #198754, 0 1px 4px rgba(0,0,0,.2); }
     .tt-res-block .visited-check {

@@ -158,6 +158,22 @@
       </div>
       {% endif %}
       {% endif %}
+      {% set _prep = staff_prep_instructions(reservation) %}
+      {% if _prep %}
+      <div class="mb-3 p-3 rounded" style="background:#fff0f0; border:2px dashed #e63946">
+        <div class="fw-bold mb-2" style="color:#c1121f">
+          <i class="bi bi-clipboard-check-fill me-1"></i>スタッフ準備指示
+        </div>
+        <ul class="mb-0 ps-3">
+          {% for p in _prep %}
+          <li class="fw-semibold" style="color:#8a1418">
+            {{ p.icon }} {{ p.text }}
+            <span class="text-muted fw-normal small">（{{ p.reason }}）</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
       {% if reservation.notes %}
       <div class="p-3 rounded fw-semibold" style="background:#fff3cd; border:1px solid #ffe082; white-space:pre-wrap">{{ reservation.notes }}</div>
       {% endif %}

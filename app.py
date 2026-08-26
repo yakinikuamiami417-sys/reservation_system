@@ -139,11 +139,34 @@ def active_special_tags(res: dict) -> list:
             tags.append(t)
     return tags
 
+# ============================================================
+# 属性別スタッフ準備指示
+# 子供の年齢・妊婦・高齢者タグから、現場で必要な準備をルールベースで導出する
+# ============================================================
+def staff_prep_instructions(res: dict) -> list:
+    out = []
+    ages = [c.get('age') for c in (res.get('children_info') or []) if isinstance(c, dict) and c.get('age') is not None]
+
+    if any(a <= 12 for a in ages):
+        out.append({'icon': '🍶', 'text': '子供のタレを用意', 'reason': '小学生以下のお子様がいます'})
+    if any(a <= 3 for a in ages):
+        out.append({'icon': '🍴', 'text': 'カトラリー・小さい取り皿・スプーン・フォークを用意', 'reason': '3歳以下のお子様がいます'})
+
+    tags = res.get('special_tags') or []
+    if 'pregnant' in tags:
+        out.append({'icon': '🪑', 'text': '座布団（クッションなど）が必要', 'reason': '妊婦様がいらっしゃいます'})
+        out.append({'icon': '🍚', 'text': '安産米が必要', 'reason': '妊婦様がいらっしゃいます'})
+    if 'elderly' in tags:
+        out.append({'icon': '💺', 'text': '座椅子が必要かを確認する', 'reason': 'ご高齢のお客様がいらっしゃいます'})
+
+    return out
+
 # Jinja2グローバル関数
 app.jinja_env.globals['jp_date'] = jp_date
 app.jinja_env.globals['SPECIAL_TAGS'] = SPECIAL_TAGS
 app.jinja_env.globals['SPECIAL_TAG_CHOICES'] = SPECIAL_TAG_CHOICES
 app.jinja_env.globals['active_special_tags'] = active_special_tags
+app.jinja_env.globals['staff_prep_instructions'] = staff_prep_instructions
 
 # ============================================================
 # ルート: トップ（日次一覧）
@@ -444,6 +467,28 @@ def timetable():
             })
         table_data[table_id] = rotations
 
+    # ── 複数テーブル連結ブリッジ（団体様が隣接テーブルにまたがる場合、
+    #    タイムテーブル上で視覚的につなげて描画するための座標データ）──
+    col_index = {t_id: i for i, t_id in enumerate(TABLES.keys())}
+    group_bridges = []
+    for res in reservations:
+        tbls = res.get('assigned_tables') or []
+        if len(tbls) < 2:
+            continue
+        sorted_tbls = sorted((t for t in tbls if t in col_index), key=lambda t: col_index[t])
+        sh, sm_h  = map(int, res['time_slot'].split(':'))
+        start_min = (sh - OPEN_HOUR) * 60 + sm_h
+        end_min   = start_min + int(res['duration_minutes'])
+        top_px    = min_to_px(start_min)
+        height_px = max(min_to_px(end_min) - top_px, 36)
+        for a, b in zip(sorted_tbls, sorted_tbls[1:]):
+            if col_index[b] - col_index[a] == 1:   # 隣接列同士のみブリッジ描画
+                group_bridges.append({
+                    'col_index': col_index[a],
+                    'top_px':    top_px,
+                    'height_px': height_px,
+                })
+
     # ── 時刻ラベル（30分刻み、インターバル内省略）──
     time_labels = []
     for h in range(OPEN_HOUR, CLOSE_HOUR + 1):
@@ -515,6 +560,7 @@ def timetable():
         close_hour       = CLOSE_HOUR,
         reservations     = reservations,
         schedule_markers = schedule_markers,
+        group_bridges    = group_bridges,
         break_start_px   = break_start_px,
         break_end_px     = break_end_px,
         lunch_end_min    = lunch_end_min,
