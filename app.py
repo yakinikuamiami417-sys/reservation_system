@@ -1,7 +1,7 @@
 # app.py — Flask メインアプリケーション
 # キリン屋 予約管理システム
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, Response, session
-import json, socket, time as _time, csv, io, os
+import json, socket, time as _time, csv, io, os, base64
 from datetime import datetime, date, timedelta
 from sqlalchemy import text
 from openpyxl import Workbook
@@ -11,12 +11,16 @@ from database import (
     init_db, save_reservation, get_reservations_by_date,
     get_reservation, update_reservation, cancel_reservation,
     set_reservation_status, get_all_reservations,
-    get_cancelled_reservations_by_date, engine
+    get_cancelled_reservations_by_date, engine,
+    apply_pos_sale_to_reservation, insert_pos_sales,
+    get_pos_sales, set_pos_sale_group_match,
 )
 from logic import (
     assign_seats, check_time_conflict, get_table_status, get_seat_map_status,
-    get_customer_history, aggregate_customer_ranking, TABLES
+    get_customer_history, aggregate_customer_ranking,
+    match_pos_sale_groups, TABLES
 )
+import pos_import as posimp
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'kiriniya-dev-only-change-in-prod')
@@ -754,6 +758,11 @@ def analytics():
     total_visits_all = sum(c['visit_count'] for c in customers)
     repeat_customers = sum(1 for c in customers if c['visit_count'] >= 2)
 
+    unmatched_sales = posimp.group_by_receipt(get_pos_sales(match_status='unmatched'))
+    standalone_sales_total = sum(
+        g['amount'] for g in posimp.group_by_receipt(get_pos_sales(match_status='standalone'))
+    )
+
     return render_template(
         'analytics.html',
         period            = period,
@@ -764,7 +773,163 @@ def analytics():
         total_sales_all   = total_sales_all,
         total_visits_all  = total_visits_all,
         repeat_customers  = repeat_customers,
+        unmatched_count   = len(unmatched_sales),
+        standalone_sales_total = standalone_sales_total,
     )
+
+
+# ============================================================
+# マジレジ（POS）売上インポート
+# ============================================================
+@app.route('/pos-import')
+def pos_import_page():
+    return render_template('pos_import.html')
+
+
+@app.route('/pos-import/preview', methods=['POST'])
+def pos_import_preview():
+    f = request.files.get('file')
+    if not f or not f.filename:
+        flash('⚠️ ファイルを選択してください', 'danger')
+        return redirect(url_for('pos_import_page'))
+
+    raw_bytes = f.read()
+    if len(raw_bytes) > 10 * 1024 * 1024:  # 10MB
+        flash('⚠️ ファイルサイズが大きすぎます（10MB以下にしてください）', 'danger')
+        return redirect(url_for('pos_import_page'))
+
+    headers, rows = posimp.read_table(f.filename, raw_bytes)
+    if not headers or not rows:
+        flash('⚠️ ファイルを読み込めませんでした（形式・文字コードをご確認ください）', 'danger')
+        return redirect(url_for('pos_import_page'))
+
+    guess = posimp.guess_columns(headers)
+
+    return render_template(
+        'pos_import_mapping.html',
+        headers      = headers,
+        guess        = guess,
+        preview_rows = rows[:10],
+        row_count    = len(rows),
+        filename     = f.filename,
+        file_b64     = base64.b64encode(raw_bytes).decode('ascii'),
+        target_fields = [
+            ('sale_date',      '会計日',   True),
+            ('sale_time',      '会計時刻', False),
+            ('receipt_no',     '伝票番号', False),
+            ('table_no',       '卓番号',   False),
+            ('party_size',     '客数',     False),
+            ('amount',         '金額',     True),
+            ('item_name',      '商品名',   False),
+            ('customer_name',  'お客様名', False),
+            ('phone',          '電話番号', False),
+            ('payment_method', '支払方法', False),
+        ],
+    )
+
+
+@app.route('/pos-import/commit', methods=['POST'])
+def pos_import_commit():
+    file_b64 = request.form.get('file_b64', '')
+    filename = request.form.get('filename', 'upload.csv')
+    try:
+        raw_bytes = base64.b64decode(file_b64)
+    except Exception:
+        flash('⚠️ アップロードデータの読み込みに失敗しました。もう一度アップロードしてください', 'danger')
+        return redirect(url_for('pos_import_page'))
+
+    headers, rows = posimp.read_table(filename, raw_bytes)
+    mapping = {field: (request.form.get(f'map_{field}') or None) for field in posimp.TARGET_FIELDS}
+
+    missing = [f for f in posimp.REQUIRED_FIELDS if not mapping.get(f)]
+    if missing:
+        flash(f"⚠️ 必須項目が未設定です: {'・'.join(missing)}", 'danger')
+        guess = posimp.guess_columns(headers)
+        return render_template(
+            'pos_import_mapping.html',
+            headers=headers, guess=guess, preview_rows=rows[:10], row_count=len(rows),
+            filename=filename, file_b64=file_b64,
+            target_fields=[
+                ('sale_date', '会計日', True), ('sale_time', '会計時刻', False),
+                ('receipt_no', '伝票番号', False), ('table_no', '卓番号', False),
+                ('party_size', '客数', False), ('amount', '金額', True),
+                ('item_name', '商品名', False), ('customer_name', 'お客様名', False),
+                ('phone', '電話番号', False), ('payment_method', '支払方法', False),
+            ],
+        )
+
+    import_batch = f"{filename}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    normalized_rows, error_count = posimp.normalize_rows(rows, mapping, import_batch)
+    inserted_count = insert_pos_sales(normalized_rows)
+
+    pos_groups = posimp.group_by_receipt(normalized_rows)
+    dates = sorted(set(g['sale_date'] for g in pos_groups))
+    reservations_by_date = {d: get_reservations_by_date(d) for d in dates}
+    matched_groups = match_pos_sale_groups(pos_groups, reservations_by_date)
+
+    matched = [g for g in matched_groups if g['matched_reservation_id']]
+    unmatched = [g for g in matched_groups if not g['matched_reservation_id']]
+    for g in matched:
+        apply_pos_sale_to_reservation(g['matched_reservation_id'], g['amount'], g['menu_items'])
+        set_pos_sale_group_match(g['receipt_key'], g['matched_reservation_id'], 'matched')
+
+    return render_template(
+        'pos_import_result.html',
+        row_count      = len(rows),
+        inserted_count = inserted_count,
+        error_count    = error_count,
+        group_count    = len(pos_groups),
+        matched        = matched,
+        unmatched      = unmatched,
+    )
+
+
+@app.route('/pos-import/unmatched')
+def pos_import_unmatched():
+    groups = posimp.group_by_receipt(get_pos_sales(match_status='unmatched'))
+    groups.sort(key=lambda g: (g['sale_date'], g['sale_time'] or ''), reverse=True)
+    return render_template('pos_unmatched.html', groups=groups)
+
+
+@app.route('/pos-sale/link', methods=['POST'])
+def pos_sale_link():
+    receipt_key = request.form.get('receipt_key', '')
+    action      = request.form.get('action', '')
+
+    rows = get_pos_sales()
+    group_rows = [r for r in rows if r['receipt_key'] == receipt_key]
+    if not group_rows:
+        flash('⚠️ 対象のPOS売上が見つかりません', 'danger')
+        return redirect(url_for('pos_import_unmatched'))
+
+    amount = sum(r['amount'] for r in group_rows)
+    items  = [r['item_name'] for r in group_rows if r['item_name']]
+
+    if action == 'standalone':
+        set_pos_sale_group_match(receipt_key, None, 'standalone')
+        flash('✅ 単体売上（予約なし）として登録しました', 'success')
+    else:
+        rid = request.form.get('reservation_id')
+        if not rid:
+            flash('⚠️ 紐付ける予約を選択してください', 'danger')
+            return redirect(url_for('pos_import_unmatched'))
+        apply_pos_sale_to_reservation(int(rid), amount, items)
+        set_pos_sale_group_match(receipt_key, int(rid), 'manual')
+        flash('✅ 予約に手動で紐付けました', 'success')
+
+    return redirect(url_for('pos_import_unmatched'))
+
+
+@app.route('/api/reservations-by-date')
+def api_reservations_by_date():
+    target_date = request.args.get('date', '')
+    if not target_date:
+        return jsonify([])
+    rows = get_reservations_by_date(target_date)
+    return jsonify([
+        {'id': r['id'], 'name': r['name'], 'time_slot': r['time_slot'], 'total_people': r['total_people']}
+        for r in rows
+    ])
 
 
 # ============================================================

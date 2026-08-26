@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}列の確認 — マジレジ売上インポート{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+  <a href="/pos-import" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h4 class="mb-0"><i class="bi bi-table me-2 text-danger"></i>列の対応を確認してください</h4>
+  <span class="badge bg-secondary rounded-pill">{{ filename }}（{{ row_count }}行）</span>
+</div>
+
+<form method="POST" action="/pos-import/commit">
+  <input type="hidden" name="file_b64" value="{{ file_b64 }}">
+  <input type="hidden" name="filename" value="{{ filename }}">
+
+  <div class="card mb-4">
+    <div class="card-header py-3">
+      <i class="bi bi-sliders me-2 text-danger"></i>列の対応付け
+      <span class="text-muted small ms-1">— システムが自動推測しています。違う場合は選び直してください</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        {% for field, label, required in target_fields %}
+        <div class="col-md-4">
+          <label class="form-label {{ 'required' if required else '' }} fw-semibold small">{{ label }}</label>
+          <select name="map_{{ field }}" class="form-select form-select-sm">
+            <option value="">（使用しない）</option>
+            {% for h in headers %}
+            <option value="{{ h }}" {{ 'selected' if guess.get(field) == h else '' }}>{{ h }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== プレビュー ===== -->
+  <div class="card mb-4">
+    <div class="card-header py-3">
+      <i class="bi bi-eye me-2 text-danger"></i>先頭{{ preview_rows|length }}行のプレビュー
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered mb-0" style="font-size:.78rem">
+        <thead class="table-dark">
+          <tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for row in preview_rows %}
+          <tr>{% for h in headers %}<td>{{ row.get(h, '') }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-end gap-3 pb-4">
+    <a href="/pos-import" class="btn btn-outline-secondary px-4">やり直す</a>
+    <button type="submit" class="btn btn-kirin btn-lg px-5">
+      <i class="bi bi-check-circle-fill me-2"></i>この内容でインポートする
+    </button>
+  </div>
+
+</form>
+
+{% endblock %}

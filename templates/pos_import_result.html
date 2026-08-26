@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}インポート完了 — マジレジ売上{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+  <a href="/analytics" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h4 class="mb-0"><i class="bi bi-check-circle-fill me-2 text-success"></i>インポート完了</h4>
+</div>
+
+<!-- ===== サマリー ===== -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card h-100"><div class="card-body text-center">
+      <div class="text-muted small">読み込んだ行数</div>
+      <div class="fw-bold fs-3">{{ row_count }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100"><div class="card-body text-center">
+      <div class="text-muted small">伝票数（グループ）</div>
+      <div class="fw-bold fs-3">{{ group_count }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100" style="background:#f0fff4"><div class="card-body text-center">
+      <div class="text-muted small">✅ 自動で一致</div>
+      <div class="fw-bold fs-3 text-success">{{ matched|length }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100" style="background:#fffbea"><div class="card-body text-center">
+      <div class="text-muted small">⚠️ 未一致</div>
+      <div class="fw-bold fs-3" style="color:#b8860b">{{ unmatched|length }}</div>
+    </div></div>
+  </div>
+</div>
+
+{% if error_count %}
+<div class="alert alert-warning">
+  <i class="bi bi-exclamation-triangle-fill me-2"></i>
+  {{ error_count }}行は日付が読み取れず取り込めませんでした（列の対応付けをご確認ください）。
+</div>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header py-3" style="background:#f0fff4">
+        <i class="bi bi-check-circle-fill me-2 text-success"></i>自動で一致した売上
+      </div>
+      <div class="card-body p-0" style="max-height:400px; overflow-y:auto">
+        {% if matched %}
+        <table class="table table-sm mb-0">
+          <thead class="table-light"><tr><th>日付</th><th>予約</th><th class="text-center">根拠</th><th class="text-end">金額</th></tr></thead>
+          <tbody>
+            {% for g in matched %}
+            <tr>
+              <td class="small">{{ g.sale_date }} {{ g.sale_time or '' }}</td>
+              <td class="small"><a href="/reservation/{{ g.matched_reservation_id }}">{{ g.matched_reservation_name }} 様</a></td>
+              <td class="text-center">
+                {% if g.match_confidence == 'phone' %}<span class="badge bg-success">電話番号</span>
+                {% elif g.match_confidence == 'name' %}<span class="badge bg-primary">氏名</span>
+                {% else %}<span class="badge bg-secondary">卓番号＋時刻</span>{% endif %}
+              </td>
+              <td class="text-end small">¥{{ "{:,}".format(g.amount) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-4">なし</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header py-3" style="background:#fffbea">
+        <i class="bi bi-exclamation-triangle-fill me-2" style="color:#b8860b"></i>未一致の売上
+      </div>
+      <div class="card-body p-0" style="max-height:400px; overflow-y:auto">
+        {% if unmatched %}
+        <table class="table table-sm mb-0">
+          <thead class="table-light"><tr><th>日付</th><th>卓</th><th class="text-end">金額</th></tr></thead>
+          <tbody>
+            {% for g in unmatched %}
+            <tr>
+              <td class="small">{{ g.sale_date }} {{ g.sale_time or '' }}</td>
+              <td class="small">{{ g.table_no or '-' }}</td>
+              <td class="text-end small">¥{{ "{:,}".format(g.amount) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-4">なし</div>
+        {% endif %}
+      </div>
+      {% if unmatched %}
+      <div class="card-footer text-end">
+        <a href="/pos-import/unmatched" class="btn btn-sm btn-warning">
+          <i class="bi bi-link-45deg me-1"></i>未一致の売上を手動で紐付ける
+        </a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="d-flex justify-content-end gap-2 mt-4 pb-4">
+  <a href="/pos-import" class="btn btn-outline-secondary">続けてもう1件インポート</a>
+  <a href="/analytics" class="btn btn-kirin">分析ページへ</a>
+</div>
+
+{% endblock %}

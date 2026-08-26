@@ -75,6 +75,35 @@ def init_db():
             except Exception:
                 pass
 
+    # ── マジレジ売上インポート用テーブル ──
+    pos_id_col = 'id SERIAL PRIMARY KEY' if _IS_PG else 'id INTEGER PRIMARY KEY AUTOINCREMENT'
+    pos_ddl = f"""
+        CREATE TABLE IF NOT EXISTS pos_sales (
+            {pos_id_col},
+            import_batch      TEXT     NOT NULL,
+            sale_date         TEXT     NOT NULL,
+            sale_time         TEXT,
+            receipt_no        TEXT,
+            table_no          TEXT,
+            party_size        INTEGER,
+            amount            INTEGER  NOT NULL DEFAULT 0,
+            item_name         TEXT,
+            customer_name     TEXT,
+            phone             TEXT,
+            payment_method    TEXT,
+            receipt_key       TEXT     NOT NULL,
+            matched_reservation_id INTEGER,
+            match_status      TEXT     NOT NULL DEFAULT 'unmatched',
+            raw_row           TEXT,
+            created_at        TEXT     NOT NULL
+        )
+    """
+    with engine.begin() as con:
+        con.execute(text(pos_ddl))
+        con.execute(text('CREATE INDEX IF NOT EXISTS idx_pos_date ON pos_sales(sale_date)'))
+        con.execute(text('CREATE INDEX IF NOT EXISTS idx_pos_receipt_key ON pos_sales(receipt_key)'))
+        con.execute(text('CREATE INDEX IF NOT EXISTS idx_pos_match_status ON pos_sales(match_status)'))
+
     print("[OK] DB初期化完了")
 
 
@@ -229,4 +258,104 @@ def set_reservation_status(res_id: int, status: str):
         con.execute(
             text("UPDATE reservations SET status=:status, visited_at=:visited_at, updated_at=:now WHERE id=:id"),
             {"status": status, "visited_at": visited_at, "now": now, "id": res_id}
+        )
+
+
+def apply_pos_sale_to_reservation(reservation_id: int, amount: int, items: list):
+    """
+    マジレジ売上を予約に反映する。売上金額はPOSを正として上書きし、
+    メニューはスタッフが既に入力済みのメモを消さないよう追記する。
+    """
+    with engine.connect() as con:
+        row = con.execute(
+            text("SELECT menu_note FROM reservations WHERE id=:id"), {"id": reservation_id}
+        ).mappings().fetchone()
+    if row is None:
+        return
+    existing_note = (row['menu_note'] or '').strip()
+    items_text = '、'.join(i for i in items if i)
+    if items_text:
+        merged_note = existing_note if items_text in existing_note else (
+            f"{existing_note}\n[レジ] {items_text}" if existing_note else f"[レジ] {items_text}"
+        )
+    else:
+        merged_note = existing_note or None
+
+    with engine.begin() as con:
+        con.execute(
+            text("UPDATE reservations SET sales_amount=:amount, menu_note=:menu_note, updated_at=:now WHERE id=:id"),
+            {"amount": amount, "menu_note": merged_note, "now": _now(), "id": reservation_id}
+        )
+
+
+# ============================================================
+# マジレジ（POS）売上インポート
+# ============================================================
+def insert_pos_sales(rows: list) -> int:
+    """
+    パース済みのPOS売上行を一括登録する。rows は dict のリストで、
+    import_batch/sale_date/sale_time/receipt_no/table_no/party_size/amount/
+    item_name/customer_name/phone/payment_method/receipt_key/raw_row のキーを想定。
+    戻り値: 登録件数
+    """
+    if not rows:
+        return 0
+    now = _now()
+    params = []
+    for r in rows:
+        params.append({
+            'import_batch':   r['import_batch'],
+            'sale_date':      r['sale_date'],
+            'sale_time':      r.get('sale_time'),
+            'receipt_no':     r.get('receipt_no'),
+            'table_no':       r.get('table_no'),
+            'party_size':     r.get('party_size'),
+            'amount':         r.get('amount') or 0,
+            'item_name':      r.get('item_name'),
+            'customer_name':  r.get('customer_name'),
+            'phone':          r.get('phone'),
+            'payment_method': r.get('payment_method'),
+            'receipt_key':    r['receipt_key'],
+            'match_status':   'unmatched',
+            'raw_row':        json.dumps(r.get('raw_row') or {}, ensure_ascii=False),
+            'created_at':     now,
+        })
+    sql = """
+        INSERT INTO pos_sales
+        (import_batch, sale_date, sale_time, receipt_no, table_no, party_size,
+         amount, item_name, customer_name, phone, payment_method, receipt_key,
+         match_status, raw_row, created_at)
+        VALUES (:import_batch, :sale_date, :sale_time, :receipt_no, :table_no, :party_size,
+         :amount, :item_name, :customer_name, :phone, :payment_method, :receipt_key,
+         :match_status, :raw_row, :created_at)
+    """
+    with engine.begin() as con:
+        con.execute(text(sql), params)
+    return len(params)
+
+
+def get_pos_sales(date_from: str = None, date_to: str = None, match_status: str = None) -> list:
+    sql = "SELECT * FROM pos_sales WHERE 1=1"
+    params = {}
+    if date_from:
+        sql += " AND sale_date >= :date_from"
+        params['date_from'] = date_from
+    if date_to:
+        sql += " AND sale_date <= :date_to"
+        params['date_to'] = date_to
+    if match_status:
+        sql += " AND match_status = :match_status"
+        params['match_status'] = match_status
+    sql += " ORDER BY sale_date DESC, sale_time DESC"
+    with engine.connect() as con:
+        rows = con.execute(text(sql), params).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def set_pos_sale_group_match(receipt_key: str, reservation_id, match_status: str):
+    """receipt_key を共有する行（同一伝票の明細）をまとめて紐付け更新する。"""
+    with engine.begin() as con:
+        con.execute(
+            text("UPDATE pos_sales SET matched_reservation_id=:rid, match_status=:status WHERE receipt_key=:key"),
+            {"rid": reservation_id, "status": match_status, "key": receipt_key}
         )

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}マジレジ売上インポート — キリン屋{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+  <a href="/analytics" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h4 class="mb-0"><i class="bi bi-receipt-cutoff me-2 text-danger"></i>マジレジ売上インポート</h4>
+  <a href="/pos-import/unmatched" class="btn btn-outline-warning btn-sm ms-auto">
+    <i class="bi bi-link-45deg me-1"></i>未紐付けの売上を確認
+  </a>
+</div>
+
+<div class="card">
+  <div class="card-header py-3">
+    <i class="bi bi-upload me-2 text-danger"></i>売上CSV / Excelをアップロード
+  </div>
+  <div class="card-body">
+
+    <div class="alert alert-light border mb-4" style="font-size:.88rem">
+      <div class="fw-bold mb-1"><i class="bi bi-info-circle me-1"></i>インポートの流れ</div>
+      <ol class="mb-0 ps-3">
+        <li>マジレジから売上データをCSV（またはExcel）でエクスポートしてください</li>
+        <li>ここでアップロードすると、列の対応関係を確認する画面が表示されます</li>
+        <li>内容を確認して確定すると、日付・卓番号・会計時刻などから既存の予約と自動で突合されます</li>
+        <li>自動で一致しなかった売上は「未紐付けの売上」画面から手動で紐付けできます</li>
+      </ol>
+    </div>
+
+    <form method="POST" action="/pos-import/preview" enctype="multipart/form-data">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">売上データファイル</label>
+        <input type="file" name="file" class="form-control" accept=".csv,.xlsx,.xlsm" required>
+        <div class="form-text text-muted">CSV（Shift_JIS / UTF-8 いずれも可）または Excel(.xlsx) に対応しています。</div>
+      </div>
+      <button type="submit" class="btn btn-kirin px-4">
+        <i class="bi bi-arrow-right-circle me-1"></i>読み込んで内容を確認する
+      </button>
+    </form>
+
+  </div>
+</div>
+
+{% endblock %}

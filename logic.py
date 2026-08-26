@@ -356,3 +356,72 @@ def aggregate_customer_ranking(all_reservations, since_date=None):
         c['days_since_last_visit'] = (today - last_dt).days
         c['avg_sales'] = round(c['total_sales'] / c['visit_count']) if c['visit_count'] else 0
     return customers
+
+# ============================================================
+# マジレジ（POS）売上 ⇔ 予約の自動突合
+# ============================================================
+def _time_diff_minutes(time_a, time_b):
+    """'HH:MM' 同士の差（分）。分子: time_a - time_b"""
+    try:
+        return int((_pt(time_a) - _pt(time_b)).total_seconds() / 60)
+    except Exception:
+        return None
+
+def match_pos_sale_groups(pos_groups: list, reservations_by_date: dict) -> list:
+    """
+    伝票単位に集計されたPOS売上グループを、既存予約と突合する。
+    優先順位: ① 電話番号一致 ② 氏名一致 ③ 卓番号＋会計時刻の近接（±利用時間内）
+    戻り値: 各グループに 'matched_reservation_id' と 'match_confidence' を付加したリスト
+    """
+    results = []
+    for g in pos_groups:
+        candidates = [r for r in reservations_by_date.get(g['sale_date'], []) if r.get('status') != 'cancelled']
+        match = None
+        confidence = None
+
+        # ① 電話番号一致（最優先・最も確実）
+        gphone = _normalize_phone(g.get('phone'))
+        if len(gphone) >= 8:
+            for r in candidates:
+                if _normalize_phone(r.get('phone')) == gphone:
+                    match, confidence = r, 'phone'
+                    break
+
+        # ② 氏名一致
+        if not match and g.get('customer_name'):
+            gname = g['customer_name'].strip()
+            for r in candidates:
+                if r.get('name', '').strip() == gname:
+                    match, confidence = r, 'name'
+                    break
+
+        # ③ 卓番号＋会計時刻の近接（POSに顧客情報が無い場合の主要ルート）
+        if not match and g.get('table_no') and g.get('sale_time'):
+            try:
+                tno = int(re.sub(r'\D', '', str(g['table_no'])) or 0)
+            except (TypeError, ValueError):
+                tno = None
+            if tno:
+                best, best_score = None, None
+                for r in candidates:
+                    if tno not in _to_list(r.get('assigned_tables', [])):
+                        continue
+                    diff = _time_diff_minutes(g['sale_time'], r['time_slot'])
+                    if diff is None:
+                        continue
+                    dur = int(r.get('duration_minutes', 105))
+                    # 入店15分前 〜 (利用時間+90分) の会計を候補とする
+                    if -15 <= diff <= dur + 90:
+                        score = abs(diff - dur)  # 想定退店タイミングに近いほど良い
+                        if best is None or score < best_score:
+                            best, best_score = r, score
+                if best:
+                    match, confidence = best, 'table_time'
+
+        results.append({
+            **g,
+            'matched_reservation_id': match['id'] if match else None,
+            'matched_reservation_name': match['name'] if match else None,
+            'match_confidence': confidence,
+        })
+    return results

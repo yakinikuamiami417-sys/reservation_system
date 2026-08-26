@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}未紐付けの売上 — マジレジ売上インポート{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+  <a href="/pos-import" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h4 class="mb-0"><i class="bi bi-link-45deg me-2 text-danger"></i>未紐付けのPOS売上</h4>
+  <span class="badge bg-warning text-dark rounded-pill">{{ groups|length }}件</span>
+</div>
+
+<div class="alert alert-light border mb-4" style="font-size:.86rem">
+  予約と自動で一致しなかった売上です。飛び込みのお客様やテイクアウトの場合は「単体売上として登録」を、
+  予約はあるが自動で一致しなかった場合は該当の予約を選んで「紐付ける」を押してください。
+</div>
+
+{% if not groups %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-check-circle" style="font-size:2.5rem; color:#ccc"></i>
+  <p class="mt-3">未紐付けの売上はありません</p>
+</div>
+{% else %}
+
+<div class="card">
+  <div class="list-group list-group-flush">
+    {% for g in groups %}
+    <div class="list-group-item px-4 py-3">
+      <form method="POST" action="/pos-sale/link" class="d-flex align-items-center gap-2 flex-wrap link-form">
+        <input type="hidden" name="receipt_key" value="{{ g.receipt_key }}">
+
+        <div style="min-width:140px">
+          <div class="fw-bold">{{ g.sale_date }}</div>
+          <div class="text-muted small">{{ g.sale_time or '時刻不明' }}</div>
+        </div>
+        <div style="min-width:80px">
+          <span class="badge bg-light text-dark border">卓 {{ g.table_no or '-' }}</span>
+        </div>
+        <div style="min-width:100px" class="fw-bold text-success">¥{{ "{:,}".format(g.amount) }}</div>
+        {% if g.menu_items %}
+        <div class="text-muted small" style="max-width:220px">🍽️ {{ g.menu_items|join('、') }}</div>
+        {% endif %}
+
+        <select name="reservation_id" class="form-select form-select-sm reservation-picker ms-auto"
+                data-date="{{ g.sale_date }}" style="width:220px">
+          <option value="">予約を選択…</option>
+        </select>
+        <button type="submit" name="action" value="link" class="btn btn-sm btn-primary">
+          <i class="bi bi-link-45deg"></i> 紐付ける
+        </button>
+        <button type="submit" name="action" value="standalone" class="btn btn-sm btn-outline-secondary">
+          単体売上として登録
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 日付ごとにその日の予約一覧を取得し、各セレクトへ反映する（同じ日付の重複取得は避ける）
+document.addEventListener('DOMContentLoaded', async () => {
+  const selects = document.querySelectorAll('.reservation-picker');
+  const dateCache = {};
+
+  for (const sel of selects) {
+    const d = sel.dataset.date;
+    if (!(d in dateCache)) {
+      try {
+        const r = await fetch('/api/reservations-by-date?date=' + encodeURIComponent(d));
+        dateCache[d] = await r.json();
+      } catch (e) { dateCache[d] = []; }
+    }
+    for (const res of dateCache[d]) {
+      const opt = document.createElement('option');
+      opt.value = res.id;
+      opt.textContent = `${res.time_slot} ${res.name}様（${res.total_people}名）`;
+      sel.appendChild(opt);
+    }
+  }
+});
+</script>
+{% endblock %}
