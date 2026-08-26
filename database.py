@@ -132,6 +132,19 @@ def get_reservations_by_date(target_date: str) -> list:
     return [_row_to_dict(dict(r)) for r in rows]
 
 
+def get_cancelled_reservations_by_date(target_date: str) -> list:
+    """
+    急なキャンセルの見落とし防止用：その日にキャンセルされた予約を
+    キャンセルが新しい順（updated_at降順）で返す。
+    """
+    with engine.connect() as con:
+        rows = con.execute(
+            text("SELECT * FROM reservations WHERE date=:date AND status='cancelled' ORDER BY updated_at DESC"),
+            {"date": target_date}
+        ).mappings().all()
+    return [_row_to_dict(dict(r)) for r in rows]
+
+
 def get_all_reservations(include_cancelled: bool = False) -> list:
     """
     顧客カルテ検索・分析集計・全件エクスポート用に全予約を取得する。

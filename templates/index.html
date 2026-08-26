@@ -55,7 +55,10 @@
             <div class="d-flex align-items-start gap-3">
               <!-- 時刻 -->
               <div class="pt-1">
-                <span class="badge-time">{{ res.time_slot }}</span>
+                <span class="badge-time {{ 'visited-time' if res.status == 'visited' else '' }}">
+                  {% if res.status == 'visited' %}<i class="bi bi-check-lg"></i>{% endif %}
+                  {{ res.time_slot }}
+                </span>
                 <div class="text-muted text-center mt-1" style="font-size:.68rem">
                   {% set dur_h = res.duration_minutes // 60 %}
                   {% set dur_m = res.duration_minutes % 60 %}
@@ -117,6 +120,33 @@
 
       </div>
     </div>
+
+    <!-- ===== 本日のキャンセル（急なキャンセルの見落とし防止） ===== -->
+    {% if cancelled %}
+    <div class="card mt-3" style="border:1.5px solid #f1aeb5">
+      <div class="card-header py-2 d-flex align-items-center gap-2" style="background:#fdf2f2; border-bottom-color:#f1aeb5">
+        <i class="bi bi-exclamation-triangle-fill text-danger"></i>
+        <span class="fw-bold text-danger">本日のキャンセル</span>
+        <span class="badge bg-danger rounded-pill">{{ cancelled|length }}件</span>
+      </div>
+      <div class="list-group list-group-flush">
+        {% for res in cancelled %}
+        <div class="list-group-item px-4 py-2" style="background:#fffafa">
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="badge bg-secondary">{{ res.time_slot }}</span>
+            <span class="text-decoration-line-through text-muted">{{ res.name }} 様</span>
+            <span class="text-muted small">（{{ res.total_people }}名）</span>
+            <span class="ms-auto text-muted small">
+              <i class="bi bi-clock-history me-1"></i>{{ res.updated_at }} キャンセル
+            </span>
+            <a href="/reservation/{{ res.id }}" class="btn btn-sm btn-outline-secondary">詳細</a>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
   </div>
 
   <!-- ===== 右: テーブルマップ + サマリー ===== -->
@@ -134,8 +164,9 @@
           {% for t_id in [1,2,3,4,5] %}
           {% set info = tables[t_id] %}
           {% set tlist = table_status.get(t_id, []) %}
+          {% set has_seated = tlist | selectattr('is_visited') | list | length > 0 %}
           <div class="col">
-            <div class="tbl-block {{ 'occupied' if tlist else ('buffer' if info.is_buffer else 'available') }}">
+            <div class="tbl-block {{ 'seated' if has_seated else ('occupied' if tlist else ('buffer' if info.is_buffer else 'available')) }}">
               <div class="fw-bold" style="font-size:.8rem">{{ t_id }}番</div>
               <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席</div>
               {% for r in tlist %}
@@ -157,8 +188,9 @@
           {% for t_id in [6,7,8,9] %}
           {% set info = tables[t_id] %}
           {% set tlist = table_status.get(t_id, []) %}
+          {% set has_seated = tlist | selectattr('is_visited') | list | length > 0 %}
           <div class="col-3">
-            <div class="tbl-block {{ 'occupied' if tlist else 'available' }}">
+            <div class="tbl-block {{ 'seated' if has_seated else ('occupied' if tlist else 'available') }}">
               <div class="fw-bold" style="font-size:.8rem">{{ t_id }}番</div>
               <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席</div>
               {% for r in tlist %}
@@ -180,8 +212,9 @@
           {% for t_id in [10,11] %}
           {% set info = tables[t_id] %}
           {% set tlist = table_status.get(t_id, []) %}
+          {% set has_seated = tlist | selectattr('is_visited') | list | length > 0 %}
           <div class="col-6">
-            <div class="tbl-block {{ 'occupied' if tlist else ('buffer' if info.is_buffer else 'available') }}">
+            <div class="tbl-block {{ 'seated' if has_seated else ('occupied' if tlist else ('buffer' if info.is_buffer else 'available')) }}">
               <div class="fw-bold" style="font-size:.8rem">{{ t_id }}番 {% if info.is_buffer %}🔒{% endif %}</div>
               <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席 {{ info.zone }}</div>
               {% for r in tlist %}

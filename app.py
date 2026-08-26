@@ -10,7 +10,8 @@ from openpyxl.utils import get_column_letter
 from database import (
     init_db, save_reservation, get_reservations_by_date,
     get_reservation, update_reservation, cancel_reservation,
-    set_reservation_status, get_all_reservations, engine
+    set_reservation_status, get_all_reservations,
+    get_cancelled_reservations_by_date, engine
 )
 from logic import (
     assign_seats, check_time_conflict, get_table_status, get_seat_map_status,
@@ -125,10 +126,12 @@ def index():
 
     reservations = get_reservations_by_date(target_date)
     table_status = get_table_status(reservations)
+    cancelled    = get_cancelled_reservations_by_date(target_date)
 
     return render_template(
         'index.html',
         reservations = reservations,
+        cancelled    = cancelled,
         target_date  = target_date,
         target_dt    = target_dt,
         date_display = jp_date(target_dt),
@@ -905,11 +908,26 @@ def backup_xlsx():
 # ============================================================
 @app.route('/api/last-change')
 def api_last_change():
-    """予約テーブルの最終更新日時をDBから直接取得"""
+    """
+    予約テーブルの最終更新日時をDBから直接取得。
+    最後に更新された予約がキャンセルだった場合は、急なキャンセルをその場で
+    全端末に知らせられるよう、氏名・時間などの情報も併せて返す。
+    """
     try:
         with engine.connect() as con:
-            ts = con.execute(text("SELECT MAX(updated_at) FROM reservations")).scalar()
-        return jsonify({'ts': ts or ''})
+            row = con.execute(text(
+                "SELECT date, time_slot, name, status, updated_at FROM reservations "
+                "ORDER BY updated_at DESC LIMIT 1"
+            )).mappings().first()
+        if not row:
+            return jsonify({'ts': ''})
+        return jsonify({
+            'ts':             row['updated_at'] or '',
+            'last_status':    row['status'],
+            'last_name':      row['name'],
+            'last_time_slot': row['time_slot'],
+            'last_date':      row['date'],
+        })
     except Exception:
         return jsonify({'ts': ''})
 
