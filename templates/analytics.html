@@ -172,14 +172,49 @@
 
 </div>
 
-<!-- ===== エクスポート導線 ===== -->
-<div class="d-flex justify-content-end gap-2 mt-4 pb-4">
-  <a href="/backup/customers/csv" class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-filetype-csv me-1"></i>顧客集計をCSVで出力
-  </a>
-  <a href="/backup/xlsx" class="btn btn-outline-success btn-sm">
-    <i class="bi bi-file-earmark-excel me-1"></i>全データをExcelで出力
-  </a>
+<!-- ===== データバックアップ（常設・ワンクリック） ===== -->
+<div class="card mt-4 mb-4">
+  <div class="card-header py-3">
+    <i class="bi bi-shield-check me-2 text-danger"></i>データバックアップ
+    <span class="text-muted small ms-1">— 予約・顧客カルテ・POS売上をいつでもダウンロードできます</span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="p-3 rounded border h-100 d-flex flex-column">
+          <div class="fw-bold mb-1"><i class="bi bi-calendar-event me-1 text-danger"></i>予約全件</div>
+          <div class="text-muted small flex-grow-1">日付・氏名・メニュー・売上など全項目</div>
+          <a href="/backup/csv" class="btn btn-outline-secondary btn-sm mt-2">
+            <i class="bi bi-filetype-csv me-1"></i>CSVで出力
+          </a>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="p-3 rounded border h-100 d-flex flex-column">
+          <div class="fw-bold mb-1"><i class="bi bi-person-vcard me-1 text-danger"></i>顧客カルテ集計</div>
+          <div class="text-muted small flex-grow-1">氏名別の来店回数・累計売上・最終来店</div>
+          <a href="/backup/customers/csv" class="btn btn-outline-secondary btn-sm mt-2">
+            <i class="bi bi-filetype-csv me-1"></i>CSVで出力
+          </a>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="p-3 rounded border h-100 d-flex flex-column">
+          <div class="fw-bold mb-1"><i class="bi bi-receipt-cutoff me-1 text-danger"></i>POS売上明細</div>
+          <div class="text-muted small flex-grow-1">マジレジからインポートした売上の全明細</div>
+          <a href="/backup/pos/csv" class="btn btn-outline-secondary btn-sm mt-2">
+            <i class="bi bi-filetype-csv me-1"></i>CSVで出力
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="d-flex justify-content-end align-items-center gap-2 mt-3 pt-3 border-top">
+      <span class="text-muted small me-auto">上記すべてを1つのExcelファイルにまとめて出力することもできます</span>
+      <a href="/backup/xlsx" class="btn btn-success btn-sm">
+        <i class="bi bi-file-earmark-excel me-1"></i>全データを一括Excel出力
+      </a>
+    </div>
+  </div>
 </div>
 
 {% endblock %}

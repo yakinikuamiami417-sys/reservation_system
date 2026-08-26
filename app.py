@@ -14,6 +14,7 @@ from database import (
     get_cancelled_reservations_by_date, engine,
     apply_pos_sale_to_reservation, insert_pos_sales,
     get_pos_sales, set_pos_sale_group_match,
+    get_deleted_reservations, soft_delete_reservation, restore_reservation,
 )
 from logic import (
     assign_seats, check_time_conflict, get_table_status, get_seat_map_status,
@@ -200,6 +201,9 @@ def view_reservation(rid):
     if not res:
         flash('予約が見つかりません', 'danger')
         return redirect(url_for('index'))
+    if res.get('is_deleted'):
+        flash('この予約はゴミ箱に移動されています。復元してから確認してください', 'warning')
+        return redirect(url_for('trash_page'))
     all_res = get_all_reservations(include_cancelled=False)
     history = get_customer_history(res['name'], res['phone'], all_res, exclude_id=rid)
     return render_template('detail.html', reservation=res, tables=TABLES, history=history)
@@ -213,6 +217,9 @@ def edit_reservation(rid):
     if not res:
         flash('予約が見つかりません', 'danger')
         return redirect(url_for('index'))
+    if res.get('is_deleted'):
+        flash('この予約はゴミ箱に移動されています。復元してから編集してください', 'warning')
+        return redirect(url_for('trash_page'))
 
     if request.method == 'POST':
         updated, err = _parse_form(request, edit_id=rid)
@@ -285,6 +292,40 @@ def toggle_visited_route(rid):
     else:
         flash(f"↩️ {res['name']} 様の来店ステータスを解除しました", 'info')
     return redirect(request.referrer or url_for('index', date=res['date']))
+
+# ============================================================
+# ルート: 論理削除（ゴミ箱）
+# ============================================================
+@app.route('/reservation/<int:rid>/delete', methods=['POST'])
+def delete_reservation_route(rid):
+    """
+    予約をゴミ箱へ移動する。DBから完全に消去することはなく、
+    is_deleted フラグを立てるのみなので /trash からいつでも復元できる。
+    """
+    res = get_reservation(rid)
+    if not res:
+        flash('予約が見つかりません', 'danger')
+        return redirect(url_for('index'))
+    soft_delete_reservation(rid)
+    flash(f"🗑️ {res['name']} 様の予約をゴミ箱へ移動しました（復元は「ゴミ箱」から可能です）", 'info')
+    return redirect(url_for('index', date=res['date']))
+
+
+@app.route('/trash')
+def trash_page():
+    deleted = get_deleted_reservations()
+    return render_template('trash.html', deleted=deleted)
+
+
+@app.route('/reservation/<int:rid>/restore', methods=['POST'])
+def restore_reservation_route(rid):
+    res = get_reservation(rid)
+    if not res:
+        flash('予約が見つかりません', 'danger')
+        return redirect(url_for('trash_page'))
+    restore_reservation(rid)
+    flash(f"✅ {res['name']} 様の予約を復元しました", 'success')
+    return redirect(url_for('trash_page'))
 
 # ============================================================
 # ルート: タイムテーブル
@@ -1009,13 +1050,42 @@ def backup_customers_csv():
 
 
 # ============================================================
-# バックアップ: Excel(XLSX) 全件エクスポート（予約全件 + 顧客集計）
+# バックアップ: POS売上明細 CSV エクスポート
+# ============================================================
+@app.route('/backup/pos/csv')
+def backup_pos_csv():
+    """マジレジ等からインポートしたPOS売上明細を全件CSVでダウンロード"""
+    rows = get_pos_sales()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['日付', '時刻', '伝票番号', '卓番号', '客数', '商品名', '金額',
+                      'お客様名', '電話番号', '突合ステータス', '紐付け予約ID', 'インポート回次'])
+    for r in rows:
+        writer.writerow([
+            r['sale_date'], r['sale_time'] or '', r['receipt_no'] or '', r['table_no'] or '',
+            r['party_size'] or '', r['item_name'] or '', r['amount'],
+            r['customer_name'] or '', r['phone'] or '',
+            r['match_status'], r['matched_reservation_id'] or '', r['import_batch'],
+        ])
+
+    fname = f"kiriniya_pos_sales_{date.today().isoformat()}.csv"
+    return Response(
+        '﻿' + output.getvalue(),
+        mimetype='text/csv; charset=utf-8-sig',
+        headers={'Content-Disposition': f'attachment; filename="{fname}"'},
+    )
+
+
+# ============================================================
+# バックアップ: Excel(XLSX) 全件エクスポート（予約全件 + 顧客集計 + POS売上明細）
 # ============================================================
 @app.route('/backup/xlsx')
 def backup_xlsx():
     all_res   = get_all_reservations(include_cancelled=True)
     customers = aggregate_customer_ranking([r for r in all_res if r['status'] != 'cancelled'])
     customers.sort(key=lambda c: -c['visit_count'])
+    pos_rows  = get_pos_sales()
 
     wb = Workbook()
 
@@ -1051,7 +1121,18 @@ def backup_xlsx():
             c.get('last_visited_at') or '',
         ])
 
-    for ws in (ws1, ws2):
+    ws3 = wb.create_sheet('POS売上明細')
+    ws3.append(['日付', '時刻', '伝票番号', '卓番号', '客数', '商品名', '金額',
+                'お客様名', '電話番号', '突合ステータス', '紐付け予約ID', 'インポート回次'])
+    for r in pos_rows:
+        ws3.append([
+            r['sale_date'], r['sale_time'] or '', r['receipt_no'] or '', r['table_no'] or '',
+            r['party_size'] or '', r['item_name'] or '', r['amount'],
+            r['customer_name'] or '', r['phone'] or '',
+            r['match_status'], r['matched_reservation_id'] or '', r['import_batch'],
+        ])
+
+    for ws in (ws1, ws2, ws3):
         for col_cells in ws.columns:
             length = max((len(str(cell.value)) for cell in col_cells if cell.value is not None), default=8)
             ws.column_dimensions[get_column_letter(col_cells[0].column)].width = min(length + 2, 40)

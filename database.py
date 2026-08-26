@@ -56,12 +56,14 @@ def init_db():
         con.execute(text('CREATE INDEX IF NOT EXISTS idx_res_date ON reservations(date)'))
         con.execute(text('CREATE INDEX IF NOT EXISTS idx_res_status ON reservations(status)'))
 
-    # notes / menu_note / sales_amount / visited_at カラムのマイグレーション（既存DBへの追加列）
+    # notes / menu_note / sales_amount / visited_at / is_deleted カラムのマイグレーション（既存DBへの追加列）
     new_columns = [
         ('notes',        'TEXT'),
         ('menu_note',    'TEXT'),
         ('sales_amount', 'INTEGER'),
         ('visited_at',   'TEXT'),   # 来店受付（チェックイン）した日時
+        ('is_deleted',   'INTEGER NOT NULL DEFAULT 0'),  # 論理削除フラグ（ゴミ箱）
+        ('deleted_at',   'TEXT'),   # ゴミ箱に移動した日時
     ]
     if _IS_PG:
         with engine.begin() as con:
@@ -155,7 +157,7 @@ def save_reservation(data: dict) -> int:
 def get_reservations_by_date(target_date: str) -> list:
     with engine.connect() as con:
         rows = con.execute(
-            text("SELECT * FROM reservations WHERE date=:date AND status!='cancelled' ORDER BY time_slot"),
+            text("SELECT * FROM reservations WHERE date=:date AND status!='cancelled' AND is_deleted=0 ORDER BY time_slot"),
             {"date": target_date}
         ).mappings().all()
     return [_row_to_dict(dict(r)) for r in rows]
@@ -168,7 +170,7 @@ def get_cancelled_reservations_by_date(target_date: str) -> list:
     """
     with engine.connect() as con:
         rows = con.execute(
-            text("SELECT * FROM reservations WHERE date=:date AND status='cancelled' ORDER BY updated_at DESC"),
+            text("SELECT * FROM reservations WHERE date=:date AND status='cancelled' AND is_deleted=0 ORDER BY updated_at DESC"),
             {"date": target_date}
         ).mappings().all()
     return [_row_to_dict(dict(r)) for r in rows]
@@ -177,14 +179,42 @@ def get_cancelled_reservations_by_date(target_date: str) -> list:
 def get_all_reservations(include_cancelled: bool = False) -> list:
     """
     顧客カルテ検索・分析集計・全件エクスポート用に全予約を取得する。
+    ゴミ箱（is_deleted=1）に入っているものは常に除外する。
     """
-    sql = "SELECT * FROM reservations"
+    sql = "SELECT * FROM reservations WHERE is_deleted=0"
     if not include_cancelled:
-        sql += " WHERE status != 'cancelled'"
+        sql += " AND status != 'cancelled'"
     sql += " ORDER BY date, time_slot"
     with engine.connect() as con:
         rows = con.execute(text(sql)).mappings().all()
     return [_row_to_dict(dict(r)) for r in rows]
+
+
+def get_deleted_reservations() -> list:
+    """ゴミ箱の中身（論理削除済みの予約）を削除が新しい順に返す。"""
+    with engine.connect() as con:
+        rows = con.execute(
+            text("SELECT * FROM reservations WHERE is_deleted=1 ORDER BY deleted_at DESC")
+        ).mappings().all()
+    return [_row_to_dict(dict(r)) for r in rows]
+
+
+def soft_delete_reservation(res_id: int):
+    """予約をゴミ箱へ移動する（実データはDBに残るため復元可能）。"""
+    with engine.begin() as con:
+        con.execute(
+            text("UPDATE reservations SET is_deleted=1, deleted_at=:now, updated_at=:now WHERE id=:id"),
+            {"now": _now(), "id": res_id}
+        )
+
+
+def restore_reservation(res_id: int):
+    """ゴミ箱から予約を復元する。"""
+    with engine.begin() as con:
+        con.execute(
+            text("UPDATE reservations SET is_deleted=0, deleted_at=NULL, updated_at=:now WHERE id=:id"),
+            {"now": _now(), "id": res_id}
+        )
 
 
 def get_reservation(res_id: int):

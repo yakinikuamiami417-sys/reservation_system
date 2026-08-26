@@ -11,7 +11,8 @@
   <span class="badge bg-secondary rounded-pill">{{ filename }}（{{ row_count }}行）</span>
 </div>
 
-<form method="POST" action="/pos-import/commit">
+<form method="POST" action="/pos-import/commit"
+      onsubmit="return confirm('{{ row_count }}行のデータを取り込みます。\n自動で一致した予約の「実績売上」「メニュー」は上書き・追記されます。\n\nよろしいですか？')">
   <input type="hidden" name="file_b64" value="{{ file_b64 }}">
   <input type="hidden" name="filename" value="{{ filename }}">
 
