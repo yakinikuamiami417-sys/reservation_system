@@ -349,6 +349,9 @@
         <i class="bi bi-tablet"></i>
         <span class="d-none d-sm-inline" style="font-size:.75rem">{{ local_ip }}</span>
       </a>
+      <button type="button" class="btn btn-sm btn-danger fw-bold" onclick="openWalkinModal()">
+        <i class="bi bi-person-walking"></i> ウォークイン登録
+      </button>
       <a href="/reservation/new" class="btn btn-sm btn-warning fw-bold">
         <i class="bi bi-plus-lg"></i> 新規予約
       </a>
@@ -370,6 +373,58 @@
       <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
     </div>
     <div class="toast-body fw-semibold" id="syncToastBody">予約が更新されました</div>
+  </div>
+</div>
+
+<!-- ===== ウォークイン登録モーダル（全ページ共通・氏名入力なしの最速登録） ===== -->
+<div class="modal fade" id="walkinModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:460px">
+    <div class="modal-content">
+
+      <div class="modal-header py-2" style="background:#8B1A1A; color:#fff; border-radius:12px 12px 0 0">
+        <h6 class="modal-title mb-0">
+          <i class="bi bi-person-walking me-2"></i>ウォークイン登録（当日フリー）
+        </h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body px-4 py-3">
+
+        <div class="mb-3 p-2 rounded text-center" style="background:#f7f4f0">
+          <span class="text-muted small">現在時刻で登録します：</span>
+          <span class="fw-bold fs-5" id="wi-time-label">--:--</span>
+        </div>
+
+        <!-- 人数 -->
+        <div class="mb-3 text-center">
+          <label class="form-label fw-semibold small d-block">人数</label>
+          <div class="d-flex align-items-center justify-content-center gap-2">
+            <button type="button" class="btn btn-outline-secondary counter-btn" onclick="wiAdjustAdults(-1)">－</button>
+            <span class="fw-bold fs-3" id="wi-adults-display" style="min-width:48px; text-align:center">2</span>
+            <button type="button" class="btn btn-outline-secondary counter-btn" onclick="wiAdjustAdults(1)">＋</button>
+          </div>
+        </div>
+
+        <!-- テーブル選択 -->
+        <div class="mb-2">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-grid-3x2-gap me-1 text-danger"></i>テーブル
+            <span class="text-muted fw-normal" style="font-size:.7rem">（自動提案済み。タップで変更可）</span>
+          </label>
+          <div id="wi-seats" class="d-flex gap-2 flex-wrap"></div>
+          <div id="wi-seat-label" class="small text-muted mt-1"></div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">閉じる</button>
+        <button type="button" class="btn btn-danger btn-sm px-4 fw-bold" id="wi-save-btn" onclick="wiSave()">
+          <i class="bi bi-check-lg me-1"></i>登録する
+        </button>
+      </div>
+
+    </div>
   </div>
 </div>
 
@@ -427,6 +482,136 @@ function formatPhoneNumber(raw) {
     return `${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}`;
   }
   return trimmed;
+}
+
+// ============================================================
+// ウォークイン登録（全ページ共通・氏名入力なしの最速登録）
+// ============================================================
+const WI_TABLE_CAP = {1:6,2:6,3:6,4:6,5:6,6:4,7:4,8:4,9:4,10:6,11:8};
+
+let _wiModal      = null;
+let _wiAdults     = 2;
+let _wiSelected   = [];
+let _wiSuggested  = [];
+let _wiOccupied   = [];
+let _wiBlocked    = [];
+let _wiTimeSlot   = '';
+
+function _wiCurrentTimeSlot() {
+  const now = new Date();
+  const m   = Math.floor(now.getMinutes() / 15) * 15;
+  return `${String(now.getHours()).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+async function openWalkinModal() {
+  _wiAdults   = 2;
+  _wiSelected = [];
+  _wiTimeSlot = _wiCurrentTimeSlot();
+  document.getElementById('wi-time-label').textContent = _wiTimeSlot;
+  document.getElementById('wi-adults-display').textContent = _wiAdults;
+
+  if (!_wiModal) _wiModal = new bootstrap.Modal(document.getElementById('walkinModal'));
+  _wiModal.show();
+
+  await _wiCheckSeats();
+}
+
+function wiAdjustAdults(delta) {
+  _wiAdults = Math.max(1, _wiAdults + delta);
+  document.getElementById('wi-adults-display').textContent = _wiAdults;
+  _wiSelected = [];  // 人数が変わったら提案を選び直す
+  _wiCheckSeats();
+}
+
+async function _wiCheckSeats() {
+  try {
+    const r = await fetch('/api/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: new Date().toISOString().slice(0, 10),
+        time_slot: _wiTimeSlot,
+        total_people: _wiAdults,
+        duration_minutes: 105,
+      }),
+    });
+    const data = await r.json();
+    _wiOccupied  = ((data.seat_map && data.seat_map.occupied) || []).map(Number);
+    _wiBlocked   = ((data.seat_map && data.seat_map.blocked)  || []).map(Number);
+    _wiSuggested = ((data.seat_suggestion && data.seat_suggestion.tables) || []).map(Number);
+    if (_wiSelected.length === 0) _wiSelected = [..._wiSuggested];
+  } catch (e) {
+    _wiOccupied = []; _wiBlocked = []; _wiSuggested = [];
+  }
+  _wiRenderSeats();
+}
+
+function wiToggleSeat(t) {
+  if (_wiBlocked.includes(t) && !_wiOccupied.includes(t)) {
+    if (!confirm(t + '番は団体予約の隣接ブロック席です。選択しますか？')) return;
+  } else if (_wiOccupied.includes(t)) {
+    if (!confirm(t + '番は現在使用中です。強制的に選択しますか？')) return;
+  }
+  const idx = _wiSelected.indexOf(t);
+  if (idx >= 0) _wiSelected.splice(idx, 1);
+  else { _wiSelected.push(t); _wiSelected.sort((a,b) => a-b); }
+  _wiRenderSeats();
+}
+
+function _wiRenderSeats() {
+  const container = document.getElementById('wi-seats');
+  container.innerHTML = '';
+  for (let t = 1; t <= 11; t++) {
+    const isSel = _wiSelected.includes(t);
+    const isOcc = _wiOccupied.includes(t);
+    const isBlk = _wiBlocked.includes(t);
+    let cls = 'btn btn-sm ';
+    if      (isSel) cls += 'btn-primary';
+    else if (isOcc) cls += 'btn-outline-danger';
+    else if (isBlk) cls += 'btn-outline-warning';
+    else            cls += 'btn-outline-success';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = cls;
+    btn.style.cssText = 'min-width:52px; padding:4px 5px; font-size:.72rem';
+    btn.innerHTML = `<div class="fw-bold">${t}番</div><div style="font-size:.6rem">${WI_TABLE_CAP[t]}席</div>`;
+    btn.onclick = () => wiToggleSeat(t);
+    container.appendChild(btn);
+  }
+  const label = document.getElementById('wi-seat-label');
+  label.textContent = _wiSelected.length
+    ? `選択中: ${_wiSelected.map(t => t + '番').join('・')}`
+    : '⚠️ テーブルを選択してください';
+}
+
+async function wiSave() {
+  if (_wiSelected.length === 0) {
+    alert('テーブルを選択してください');
+    return;
+  }
+  const btn = document.getElementById('wi-save-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>登録中…';
+  try {
+    const r = await fetch('/api/reservation/walkin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adults: _wiAdults, assigned_tables: _wiSelected }),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      location.reload();
+    } else {
+      alert('エラー: ' + (data.error || '登録に失敗しました'));
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>登録する';
+    }
+  } catch (e) {
+    alert('通信エラーが発生しました');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>登録する';
+  }
 }
 
 // ============================================================

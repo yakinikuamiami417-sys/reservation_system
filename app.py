@@ -758,6 +758,68 @@ def api_quick_add():
 
 
 # ============================================================
+# API: ウォークイン登録（事前予約なしの当日フリー来店）
+# ============================================================
+@app.route('/api/reservation/walkin', methods=['POST'])
+def api_walkin():
+    """
+    現場で数秒で登録できる簡易フロー。氏名入力は不要（自動採番）で、
+    人数とテーブルだけ指定すればよい。来店した瞬間の登録のため、
+    保存と同時に「来店受付（visited）」状態にする。
+    """
+    data = request.get_json() or {}
+    adults = max(1, int(data.get('adults', 2)))
+
+    now = datetime.now()
+    time_slot = f"{now.hour:02d}:{(now.minute // 15) * 15:02d}"
+    today_str = date.today().isoformat()
+
+    existing = get_reservations_by_date(today_str)
+    tables = [int(t) for t in (data.get('assigned_tables') or [])]
+    seat_note = None
+    if not tables:
+        suggestion = assign_seats(
+            {'total_people': adults, 'adults': adults, 'time_slot': time_slot, 'duration_minutes': 105},
+            existing
+        )
+        tables = suggestion['tables']
+        seat_note = suggestion['note']
+        if not tables:
+            return jsonify({'ok': False, 'error': seat_note or '空き席が見つかりません。手動でテーブルを選んでください'}), 400
+
+    # 名前の代わりに時刻入りの識別名を自動採番（顧客カルテ集計で他のお客様と混ざらないようにするため）
+    name = f"フリー（{time_slot}来店）"
+
+    res_dict = {
+        'date':             today_str,
+        'time_slot':        time_slot,
+        'name':             name,
+        'phone':            '-',
+        'adults':           adults,
+        'children_info':    '[]',
+        'total_people':     adults,
+        'duration_minutes': 105,
+        'private_room':     0,
+        'is_vip':           0,
+        'is_group':         1 if adults >= 8 else 0,
+        'budget_per_person': None,
+        'needs_type':       None,
+        'gender_male':      None,
+        'gender_female':    None,
+        'organizer_note':   None,
+        'notes':            'ウォークイン（事前予約なし・当日フリー来店）',
+        'menu_note':        None,
+        'sales_amount':     None,
+        'assigned_tables':  json.dumps(tables),
+        'status':           'confirmed',
+    }
+    rid = save_reservation(res_dict)
+    set_reservation_status(rid, 'visited')  # その場で来店済みとして扱う（visited_atも記録される）
+
+    return jsonify({'ok': True, 'id': rid, 'name': name, 'time_slot': time_slot, 'tables': tables})
+
+
+# ============================================================
 # API: 顧客カルテ（過去履歴）呼び出し
 # ============================================================
 @app.route('/api/customer-history')
