@@ -396,27 +396,34 @@ def match_pos_sale_groups(pos_groups: list, reservations_by_date: dict) -> list:
                     break
 
         # ③ 卓番号＋会計時刻の近接（POSに顧客情報が無い場合の主要ルート）
-        if not match and g.get('table_no') and g.get('sale_time'):
+        if not match and g.get('table_no'):
             try:
                 tno = int(re.sub(r'\D', '', str(g['table_no'])) or 0)
             except (TypeError, ValueError):
                 tno = None
             if tno:
-                best, best_score = None, None
-                for r in candidates:
-                    if tno not in _to_list(r.get('assigned_tables', [])):
-                        continue
-                    diff = _time_diff_minutes(g['sale_time'], r['time_slot'])
-                    if diff is None:
-                        continue
-                    dur = int(r.get('duration_minutes', 105))
-                    # 入店15分前 〜 (利用時間+90分) の会計を候補とする
-                    if -15 <= diff <= dur + 90:
-                        score = abs(diff - dur)  # 想定退店タイミングに近いほど良い
-                        if best is None or score < best_score:
-                            best, best_score = r, score
-                if best:
-                    match, confidence = best, 'table_time'
+                table_candidates = [r for r in candidates if tno in _to_list(r.get('assigned_tables', []))]
+
+                if g.get('sale_time'):
+                    # 時刻情報がある場合: 入店15分前 〜 (利用時間+90分) の会計を候補とし、
+                    # 想定退店タイミングに最も近いものを採用する
+                    best, best_score = None, None
+                    for r in table_candidates:
+                        diff = _time_diff_minutes(g['sale_time'], r['time_slot'])
+                        if diff is None:
+                            continue
+                        dur = int(r.get('duration_minutes', 105))
+                        if -15 <= diff <= dur + 90:
+                            score = abs(diff - dur)
+                            if best is None or score < best_score:
+                                best, best_score = r, score
+                    if best:
+                        match, confidence = best, 'table_time'
+
+                # 時刻で絞り込めず、かつその卓がその日1回転しかない場合は
+                # 卓番号だけで一意に確定できるので自動一致させる（誤爆の心配がない）
+                if not match and len(table_candidates) == 1:
+                    match, confidence = table_candidates[0], 'table_only'
 
         results.append({
             **g,

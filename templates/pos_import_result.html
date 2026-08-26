@@ -63,6 +63,7 @@
               <td class="text-center">
                 {% if g.match_confidence == 'phone' %}<span class="badge bg-success">電話番号</span>
                 {% elif g.match_confidence == 'name' %}<span class="badge bg-primary">氏名</span>
+                {% elif g.match_confidence == 'table_only' %}<span class="badge bg-warning text-dark">卓番号のみ（当日1回転）</span>
                 {% else %}<span class="badge bg-secondary">卓番号＋時刻</span>{% endif %}
               </td>
               <td class="text-end small">¥{{ "{:,}".format(g.amount) }}</td>
