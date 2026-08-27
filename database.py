@@ -394,6 +394,23 @@ def get_pos_sales(date_from: str = None, date_to: str = None, match_status: str 
     return [dict(r) for r in rows]
 
 
+def get_matched_reservation_ids(target_date: str) -> set:
+    """
+    指定日に既にPOS売上と紐付け済み（自動一致 or 手動紐付け）の予約IDの集合を返す。
+    未紐付け売上の手動リンク画面で、候補一覧から整合済みのお客様を除外するために使う。
+    """
+    with engine.connect() as con:
+        rows = con.execute(
+            text(
+                "SELECT DISTINCT matched_reservation_id FROM pos_sales "
+                "WHERE sale_date=:date AND matched_reservation_id IS NOT NULL "
+                "AND match_status IN ('matched', 'manual')"
+            ),
+            {"date": target_date}
+        ).all()
+    return {r[0] for r in rows}
+
+
 def set_pos_sale_group_match(receipt_key: str, reservation_id, match_status: str):
     """receipt_key を共有する行（同一伝票の明細）をまとめて紐付け更新する。"""
     with engine.begin() as con:

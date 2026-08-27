@@ -13,7 +13,7 @@ from database import (
     set_reservation_status, get_all_reservations,
     get_cancelled_reservations_by_date, engine,
     apply_pos_sale_to_reservation, insert_pos_sales,
-    get_pos_sales, set_pos_sale_group_match,
+    get_pos_sales, set_pos_sale_group_match, get_matched_reservation_ids,
     get_deleted_reservations, soft_delete_reservation, restore_reservation,
 )
 from logic import (
@@ -1201,7 +1201,7 @@ def pos_import_commit():
         )
 
     import_batch = f"{filename}_{now_jst().strftime('%Y%m%d%H%M%S')}"
-    normalized_rows, error_count = posimp.normalize_rows(rows, mapping, import_batch)
+    normalized_rows, error_count, skipped_summary_count = posimp.normalize_rows(rows, mapping, import_batch)
     inserted_count = insert_pos_sales(normalized_rows)
 
     pos_groups = posimp.group_by_receipt(normalized_rows)
@@ -1220,6 +1220,7 @@ def pos_import_commit():
         row_count      = len(rows),
         inserted_count = inserted_count,
         error_count    = error_count,
+        skipped_summary_count = skipped_summary_count,
         group_count    = len(pos_groups),
         matched        = matched,
         unmatched      = unmatched,
@@ -1268,9 +1269,12 @@ def api_reservations_by_date():
     if not target_date:
         return jsonify([])
     rows = get_reservations_by_date(target_date)
+    # 未紐付け売上の手動リンク画面向け: 既に別の売上と整合済みの予約は
+    # 候補として選ばれてしまうと誤って二重紐付けしかねないため一覧から除外する
+    matched_ids = get_matched_reservation_ids(target_date)
     return jsonify([
         {'id': r['id'], 'name': r['name'], 'time_slot': r['time_slot'], 'total_people': r['total_people']}
-        for r in rows
+        for r in rows if r['id'] not in matched_ids
     ])
 
 

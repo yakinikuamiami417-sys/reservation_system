@@ -164,20 +164,49 @@ def parse_int(raw: str):
 
 
 # ============================================================
+# 日計の合計行・小計行の検出
+# ============================================================
+# POSの日計CSV/Excelはデータ行の末尾に「合計」「総合計」等のサマリー行が
+# 付与されることが多い。これを個別の会計（顧客データ）として取り込んでしまうと
+# 全売上合算額が1件の巨大な伝票として登録されてしまうため、事前に除外する。
+# ラベルがどの列（卓番号欄・伝票番号欄・商品名欄など）に入っていても検出できるよう、
+# マッピング先の列に関わらず行内の全セル値をチェックする。
+_SUMMARY_ROW_KEYWORDS = {
+    '合計', '総合計', '小計', '日計', '総計', '合計金額', '総合計金額',
+    'TOTAL', 'Total', 'total', '合計欄',
+}
+
+def is_summary_row(raw_row: dict) -> bool:
+    """行内のいずれかのセルが集計ラベルと完全一致する場合、合計・小計行とみなす。"""
+    for v in raw_row.values():
+        if v is None:
+            continue
+        if str(v).strip() in _SUMMARY_ROW_KEYWORDS:
+            return True
+    return False
+
+
+# ============================================================
 # 行の正規化 & 伝票単位へのグルーピング
 # ============================================================
 def normalize_rows(rows: list, mapping: dict, import_batch: str):
     """
     生の行データを、DB登録用の正規化行（1行=1明細）に変換する。
     mapping: {target_field: csv_header_name}
-    戻り値: (normalized_rows, error_count)
+    戻り値: (normalized_rows, error_count, skipped_summary_count)
     """
     normalized = []
     errors = 0
-    for raw in rows:
+    skipped_summary = 0
+    for idx, raw in enumerate(rows):
         def get(field):
             col = mapping.get(field)
             return raw.get(col, '') if col else ''
+
+        # 日計の合計行・小計行は個別の会計ではないため、顧客データとして取り込まない
+        if is_summary_row(raw):
+            skipped_summary += 1
+            continue
 
         sale_date = parse_date(get('sale_date'))
         amount    = parse_amount(get('amount'))
@@ -188,8 +217,19 @@ def normalize_rows(rows: list, mapping: dict, import_batch: str):
         sale_time  = parse_time(get('sale_time'))
         receipt_no = (get('receipt_no') or '').strip() or None
         table_no   = (get('table_no') or '').strip() or None
-        # 伝票番号があればそれをキーに、無ければ 日付+卓番号+時刻 でグルーピングする
-        receipt_key = receipt_no or f"{sale_date}|{table_no or '?'}|{sale_time or '?'}"
+        # グルーピングキーの優先順位:
+        #   ① 伝票番号（最も確実。同じ卓の複数回転でも伝票番号が異なれば別会計として扱われる）
+        #   ② 日付+卓番号+会計時刻（伝票番号が無い場合。時刻が取れていれば回転ごとに別キーになる）
+        #   ③ 日付+卓番号+行番号（伝票番号も会計時刻も取れない場合のフォールバック）
+        #      ※ 時刻情報が無いまま「日付+卓番号」だけでキーを作ると、同じ卓の複数回転が
+        #        すべて同一キーに収束し、金額が誤って合算されてしまうため、行番号で必ず
+        #        ユニークにする（＝伝票番号も時刻も無い行は決して自動合算しない）。
+        if receipt_no:
+            receipt_key = receipt_no
+        elif sale_time:
+            receipt_key = f"{sale_date}|{table_no or '?'}|{sale_time}"
+        else:
+            receipt_key = f"{sale_date}|{table_no or '?'}|row{idx}"
 
         normalized.append({
             'import_batch':   import_batch,
@@ -206,7 +246,7 @@ def normalize_rows(rows: list, mapping: dict, import_batch: str):
             'receipt_key':    receipt_key,
             'raw_row':        raw,
         })
-    return normalized, errors
+    return normalized, errors, skipped_summary
 
 
 def group_by_receipt(normalized_rows: list) -> list:

@@ -45,6 +45,13 @@
 </div>
 {% endif %}
 
+{% if skipped_summary_count %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle-fill me-2"></i>
+  {{ skipped_summary_count }}行は「合計」「総合計」等の集計行と判定したため、個別の会計としては取り込みませんでした。
+</div>
+{% endif %}
+
 <div class="row g-4">
   <div class="col-lg-6">
     <div class="card">
