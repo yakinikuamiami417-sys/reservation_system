@@ -302,19 +302,22 @@
           </div>
           {% endif %}
 
+          <!-- 開始時刻（枠の一番上） -->
+          <div class="tt-info" style="font-weight:800">{{ res.time_slot }}〜</div>
+
           <div class="tt-name">
             {{ res.name }}
             {% if res.notes %}<span style="font-size:.82rem; opacity:.85">📝</span>{% endif %}
           </div>
-          <div class="tt-info">{{ res.total_people }}名</div>
-          {% if res.children_info %}
           <div class="tt-info">
-            子{{ res.children_info|length }}（{% for c in res.children_info %}{{ c.age }}{% if not loop.last %}・{% endif %}{% endfor %}歳）
+            {{ res.total_people }}名様
+            {% if res.children_info %}（子{{ res.children_info|length }}：{% for c in res.children_info %}{{ c.age }}{% if not loop.last %}・{% endif %}{% endfor %}歳）{% endif %}
           </div>
-          {% endif %}
           {% if res.height_px >= 160 %}
+          {% set dur_h = res.duration_minutes // 60 %}
+          {% set dur_m = res.duration_minutes % 60 %}
           <div class="tt-info">
-            {{ res.duration_minutes // 60 }}h{{ '%02d'|format(res.duration_minutes % 60) }}m
+            {{ dur_h }}時間{% if dur_m %}{{ dur_m }}分{% endif %}
             {% if res.is_vip %}<span class="ms-1">⭐</span>{% endif %}
             {% if res.is_group %}<span class="ms-1">👥</span>{% endif %}
           </div>
@@ -325,7 +328,9 @@
             📝 {{ res.notes[:28] }}{% if res.notes|length > 28 %}…{% endif %}
           </div>
           {% endif %}
-          <div class="tt-info mt-1" style="border-top:1px solid rgba(255,255,255,.25); padding-top:3px">{{ res.time_slot }}〜{{ res.end_time }}</div>
+
+          <!-- 終了時刻（枠の一番下に固定） -->
+          <div class="tt-info tt-time-end" style="font-weight:800; border-top:1px solid rgba(255,255,255,.25); padding-top:3px">〜{{ res.end_time }}</div>
 
         </div>
         {% endfor %}

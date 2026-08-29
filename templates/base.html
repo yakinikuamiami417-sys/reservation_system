@@ -233,6 +233,8 @@
        レイアウト編集モード時：ドラッグして席・時間を移動できる */
     .tt-res-block {
       position: absolute;
+      display: flex;
+      flex-direction: column;
       border-radius: 8px;
       padding: 6px 7px;
       font-size: .85rem;
@@ -245,6 +247,8 @@
       user-select: none;
       -webkit-user-select: none;
     }
+    /* 終了時刻は必ず枠の一番下に固定表示 */
+    .tt-res-block .tt-time-end { margin-top: auto; flex-shrink: 0; }
     .tt-res-block:hover { filter: brightness(1.12); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
     .tt-edit-mode .tt-res-block { touch-action: none; cursor: grab; }
 
