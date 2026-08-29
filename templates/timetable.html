@@ -313,7 +313,7 @@
             {{ res.total_people }}名様
             {% if res.children_info %}（子{{ res.children_info|length }}：{% for c in res.children_info %}{{ c.age }}{% if not loop.last %}・{% endif %}{% endfor %}歳）{% endif %}
           </div>
-          {% if res.height_px >= 160 %}
+          {% if res.height_px >= 120 %}
           {% set dur_h = res.duration_minutes // 60 %}
           {% set dur_m = res.duration_minutes % 60 %}
           <div class="tt-info">
@@ -322,10 +322,10 @@
             {% if res.is_group %}<span class="ms-1">👥</span>{% endif %}
           </div>
           {% endif %}
-          {% if res.notes and res.height_px >= 210 %}
-          <div class="tt-info mt-1"
-               style="border-top:1px solid rgba(255,255,255,.25); padding-top:3px; white-space:normal; line-height:1.3">
-            📝 {{ res.notes[:28] }}{% if res.notes|length > 28 %}…{% endif %}
+          {% if res.notes %}
+          <div class="tt-note mt-1"
+               style="border-top:1px solid rgba(255,255,255,.25); padding-top:2px; font-size:.72rem; font-weight:700; white-space:normal; line-height:1.25; word-break:break-word">
+            📝 {{ res.notes[:60] }}{% if res.notes|length > 60 %}…{% endif %}
           </div>
           {% endif %}
 
