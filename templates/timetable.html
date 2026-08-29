@@ -262,7 +262,7 @@
              style="left:{{ col_left + 2 }}px; top:{{ res.top_px }}px;
                     height:{{ res.height_px }}px; width:{{ col_w - 7 }}px"
              data-rid="{{ res.id }}"
-             title="{{ res.name }} 様 {{ res.total_people }}名（大{{ res.adults }}{% if res.children_info %}・子{{ res.children_info|length }}：{% for c in res.children_info %}{{ c.age }}歳{% if not loop.last %}、{% endif %}{% endfor %}{% endif %}） {{ res.time_slot }}〜{% if res.status == 'visited' %} | ✅ 来店済み{% endif %}{% for key in active_special_tags(res) %} | {{ SPECIAL_TAGS[key].icon }} {{ SPECIAL_TAGS[key].label }}{% endfor %}{% if res.notes %} | 📝 {{ res.notes }}{% endif %}">
+             title="{{ res.name }} 様 {{ res.total_people }}名（大{{ res.adults }}{% if res.children_info %}・子{{ res.children_info|length }}：{% for c in res.children_info %}{{ c.age }}歳{% if not loop.last %}、{% endif %}{% endfor %}{% endif %}） {{ res.time_slot }}〜{{ res.end_time }}{% if res.status == 'visited' %} | ✅ 来店済み{% endif %}{% for key in active_special_tags(res) %} | {{ SPECIAL_TAGS[key].icon }} {{ SPECIAL_TAGS[key].label }}{% endfor %}{% if res.notes %} | 📝 {{ res.notes }}{% endif %}">
 
           {% if res.status == 'visited' %}
           <span class="visited-check" title="来店済み"><i class="bi bi-check-lg"></i></span>
@@ -307,7 +307,6 @@
             {% if res.notes %}<span style="font-size:.82rem; opacity:.85">📝</span>{% endif %}
           </div>
           <div class="tt-info">{{ res.total_people }}名</div>
-          <div class="tt-info">{{ res.time_slot }}〜</div>
           {% if res.children_info %}
           <div class="tt-info">
             子{{ res.children_info|length }}（{% for c in res.children_info %}{{ c.age }}{% if not loop.last %}・{% endif %}{% endfor %}歳）
@@ -326,6 +325,7 @@
             📝 {{ res.notes[:28] }}{% if res.notes|length > 28 %}…{% endif %}
           </div>
           {% endif %}
+          <div class="tt-info mt-1" style="border-top:1px solid rgba(255,255,255,.25); padding-top:3px">{{ res.time_slot }}〜{{ res.end_time }}</div>
 
         </div>
         {% endfor %}
@@ -370,7 +370,7 @@
           <td class="text-center">
             {% if rot %}
               <span style="font-size:.75rem">
-                {{ rot[0].time_slot }}〜<br>
+                {{ rot[0].time_slot }}〜{{ rot[0].end_time }}<br>
                 <strong>{{ rot[0].name }}</strong><br>
                 {{ rot[0].total_people }}名
               </span>

@@ -205,7 +205,7 @@
               <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席</div>
               {% for r in tlist %}
               <div class="{{ 'seated-entry' if r.is_visited else '' }}" style="font-size:.6rem; line-height:1.2; color:{{ '' if r.is_visited else '#b01' }}">
-                {% if r.is_visited %}✅ {% endif %}{{ r.name[:4] }}
+                {% if r.is_visited %}✅ {% endif %}{{ r.time_slot }}-{{ r.end_time }}<br>{{ r.name[:4] }}
               </div>
               {% endfor %}
               {% if not tlist %}
@@ -230,7 +230,7 @@
               <div class="text-muted" style="font-size:.65rem">{{ info.capacity }}席 {{ info.zone }}</div>
               {% for r in tlist %}
               <div class="{{ 'seated-entry' if r.is_visited else '' }}" style="font-size:.6rem; line-height:1.2; color:{{ '' if r.is_visited else '#b01' }}">
-                {% if r.is_visited %}✅ {% endif %}{{ r.time_slot }}<br>{{ r.name[:4] }}
+                {% if r.is_visited %}✅ {% endif %}{{ r.time_slot }}-{{ r.end_time }}<br>{{ r.name[:4] }}
               </div>
               {% endfor %}
               {% if not tlist %}

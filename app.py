@@ -493,6 +493,7 @@ def timetable():
             rotation_num = i + 1
             gap_danger  = gap_min is not None and 0 <= gap_min < ROTATION_WARN_GAP_DANGER
             gap_caution = gap_min is not None and ROTATION_WARN_GAP_DANGER <= gap_min < ROTATION_WARN_GAP_CAUTION
+            end_time_str = f'{OPEN_HOUR + end_min // 60:02d}:{end_min % 60:02d}'
             rotations.append({
                 **res,
                 'rotation_num': rotation_num,
@@ -503,6 +504,7 @@ def timetable():
                 'warn_gap':     gap_danger or gap_caution,
                 'gap_danger':   gap_danger,
                 'gap_caution':  gap_caution,
+                'end_time':     end_time_str,
                 '_end_min':     end_min,
             })
         table_data[table_id] = rotations
@@ -653,10 +655,11 @@ def timetable_print_view():
             rn        = i + 1
             gd        = gap_min is not None and 0 <= gap_min < ROTATION_WARN_GAP_DANGER
             gc        = gap_min is not None and ROTATION_WARN_GAP_DANGER <= gap_min < ROTATION_WARN_GAP_CAUTION
+            end_time_str = f'{OPEN_HOUR + end_min // 60:02d}:{end_min % 60:02d}'
             rotations.append({**res, 'rotation_num': rn, 'top_px': top_px,
                                'height_px': height_px, 'gap_min': gap_min,
                                'warn_3rd': rn >= 3, 'gap_danger': gd, 'gap_caution': gc,
-                               '_end_min': end_min})
+                               'end_time': end_time_str, '_end_min': end_min})
         table_data[table_id] = rotations
 
     # ── ランチ（11:00〜14:00） ──

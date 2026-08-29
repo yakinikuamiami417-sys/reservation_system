@@ -219,7 +219,7 @@ function setPrintPart(part) {
       <div class="tt-blk r{{ res.rotation_num }}"
            style="left:{{ cl + 2 }}px; top:{{ res.top_px }}px; height:{{ res.height_px }}px; width:{{ col_w - 5 }}px">
         <div class="blk-name">{{ res.name }}</div>
-        <div class="blk-info">{{ res.total_people }}名　{{ res.time_slot }}〜</div>
+        <div class="blk-info">{{ res.total_people }}名　{{ res.time_slot }}〜{{ res.end_time }}</div>
         {% if res.children_info and res.height_px >= 42 %}
         <div class="blk-info">子{{ res.children_info|length }}（{% for c in res.children_info %}{{ c.age }}{% if not loop.last %},{% endif %}{% endfor %}歳）</div>
         {% endif %}
@@ -308,7 +308,7 @@ function setPrintPart(part) {
         <td>
           {% if rot %}
             <strong>{{ rot[0].name }}</strong>　{{ rot[0].total_people }}名<br>
-            <span style="color:#666; font-size:.65rem">{{ rot[0].time_slot }}〜</span>
+            <span style="color:#666; font-size:.65rem">{{ rot[0].time_slot }}〜{{ rot[0].end_time }}</span>
             {% if rot[0].gap_danger %}<span style="color:#e63946;font-size:.62rem"> 🔴{{ rot[0].gap_min }}分</span>{% endif %}
             {% if rot[0].gap_caution %}<span style="color:#856404;font-size:.62rem"> 🟡{{ rot[0].gap_min }}分</span>{% endif %}
           {% else %}<span style="color:#ddd">—</span>{% endif %}
