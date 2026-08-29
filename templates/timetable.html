@@ -618,6 +618,15 @@ const CLOSE_HOUR = 22;
 // ============================================================
 const QM_TARGET_DATE = '{{ target_date }}';
 const SPECIAL_TAGS_JS = {{ SPECIAL_TAGS | tojson }};
+function _qmChildrenText(res) {
+  const list = res.children_info || [];
+  if (!list.length) return '';
+  const counts = {};
+  list.forEach(c => { const a = c.age; counts[a] = (counts[a] || 0) + 1; });
+  const ages = Object.keys(counts).map(Number).sort((a, b) => a - b);
+  return ages.map(a => `${a}歳${counts[a]}名`).join('・');
+}
+
 function _qmActiveTags(res) {
   const tags = [];
   if (res.children_info && res.children_info.length) tags.push('kids');
@@ -723,6 +732,8 @@ function _buildQmInfo() {
       </ul>
     </div>` : '';
 
+  const childrenText = _qmChildrenText(res);
+
   document.getElementById('qm-info').innerHTML = `
     <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
       <span class="badge-time">${res.time_slot}</span>
@@ -730,7 +741,7 @@ function _buildQmInfo() {
       ${badges}
     </div>
     <div class="text-muted small">
-      ${res.total_people}名（大人${res.adults}名）　${res.duration_minutes}分　${tables || '席未定'}
+      ${res.total_people}名（大人${res.adults}名${childrenText ? '・お子様' + childrenText : ''}）　${res.duration_minutes}分　${tables || '席未定'}
     </div>
     ${linkNote}
     ${prepHtml}`;
