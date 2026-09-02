@@ -621,6 +621,7 @@ def timetable_print_view():
         target_dt = today_jst(); target_date = target_dt.isoformat()
 
     reservations = get_reservations_by_date(target_date)
+    _mark_regular_customers(reservations)
 
     lunch_end_min    = (LUNCH_END_HOUR   - OPEN_HOUR) * 60
     dinner_start_min = (DINNER_START_HOUR - OPEN_HOUR) * 60
