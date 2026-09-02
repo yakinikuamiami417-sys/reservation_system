@@ -249,7 +249,8 @@ def get_table_status(reservations):
                     'total_people':    res['total_people'],
                     'duration_minutes':res.get('duration_minutes', 105),
                     'is_vip':          res.get('is_vip', 0),
-                    'end_time':        _end_time(res['time_slot'], res.get('duration_minutes', 105)),
+                    'end_time':        ('終了未定' if res.get('end_time_unspecified')
+                                         else _end_time(res['time_slot'], res.get('duration_minutes', 105))),
                     'status':          res.get('status'),
                     'is_visited':      res.get('status') == 'visited',
                 })

@@ -63,9 +63,13 @@
                   {{ res.time_slot }}
                 </span>
                 <div class="text-muted text-center mt-1" style="font-size:.82rem; font-weight:600">
+                  {% if res.end_time_unspecified %}
+                  終了未定
+                  {% else %}
                   {% set dur_h = res.duration_minutes // 60 %}
                   {% set dur_m = res.duration_minutes % 60 %}
                   {{ dur_h }}h{{ '%02d'|format(dur_m) }}m
+                  {% endif %}
                 </div>
               </div>
               <!-- 詳細 -->

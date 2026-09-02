@@ -130,6 +130,10 @@ DURATION_OPTIONS = [
     (180, '3時間'),
 ]
 
+# 「終了時刻を指定しない」予約を受けた場合に、席の確保・回転管理のために
+# 内部的に確保しておく目安時間（表示上は「終了未定」として時刻を出さない）
+FLEXIBLE_END_DURATION_MIN = 120
+
 # ============================================================
 # 特記事項タグ（現場スタッフが一目で配慮点を把握できるようにする）
 # 'kids'（お子様連れ）はチェックボックスで手入力せず、children_info の
@@ -493,7 +497,8 @@ def timetable():
             rotation_num = i + 1
             gap_danger  = gap_min is not None and 0 <= gap_min < ROTATION_WARN_GAP_DANGER
             gap_caution = gap_min is not None and ROTATION_WARN_GAP_DANGER <= gap_min < ROTATION_WARN_GAP_CAUTION
-            end_time_str = f'{OPEN_HOUR + end_min // 60:02d}:{end_min % 60:02d}'
+            end_time_str = ('終了未定' if res.get('end_time_unspecified')
+                             else f'{OPEN_HOUR + end_min // 60:02d}:{end_min % 60:02d}')
             rotations.append({
                 **res,
                 'rotation_num': rotation_num,
@@ -656,7 +661,8 @@ def timetable_print_view():
             rn        = i + 1
             gd        = gap_min is not None and 0 <= gap_min < ROTATION_WARN_GAP_DANGER
             gc        = gap_min is not None and ROTATION_WARN_GAP_DANGER <= gap_min < ROTATION_WARN_GAP_CAUTION
-            end_time_str = f'{OPEN_HOUR + end_min // 60:02d}:{end_min % 60:02d}'
+            end_time_str = ('終了未定' if res.get('end_time_unspecified')
+                             else f'{OPEN_HOUR + end_min // 60:02d}:{end_min % 60:02d}')
             rotations.append({**res, 'rotation_num': rn, 'top_px': top_px,
                                'height_px': height_px, 'gap_min': gap_min,
                                'warn_3rd': rn >= 3, 'gap_danger': gd, 'gap_caution': gc,
@@ -973,6 +979,7 @@ def api_quick_add():
 
     adults = max(1, int(data.get('adults', 2)))
     tables = [int(t) for t in (data.get('assigned_tables') or [])]
+    end_time_unspecified = bool(data.get('end_time_unspecified'))
 
     res_dict = {
         'date':             data.get('date', today_jst().isoformat()),
@@ -982,7 +989,8 @@ def api_quick_add():
         'adults':           adults,
         'children_info':    '[]',
         'total_people':     adults,
-        'duration_minutes': int(data.get('duration_minutes', 105)),
+        'duration_minutes': FLEXIBLE_END_DURATION_MIN if end_time_unspecified else int(data.get('duration_minutes', 105)),
+        'end_time_unspecified': 1 if end_time_unspecified else 0,
         'private_room':     0,
         'is_vip':           0,
         'is_group':         1 if adults >= 8 else 0,
@@ -1513,6 +1521,10 @@ def _parse_form(req, edit_id=None) -> tuple[dict, str | None]:
         adults        = int(f.get('adults', 1))
         total         = adults + len(children_info)
         special_tags  = [t for t in req.form.getlist('special_tags[]') if t in SPECIAL_TAG_CHOICES]
+        end_time_unspecified = 1 if 'end_time_unspecified' in f else 0
+        # 終了時刻未定の場合、フォーム側で選ばれた利用時間は無視し、
+        # 席確保・回転管理用に目安時間(2時間)を強制する（サーバー側でも二重に担保）
+        duration_minutes = FLEXIBLE_END_DURATION_MIN if end_time_unspecified else int(f.get('duration_minutes', 105))
 
         d = {
             'date':              f['date'],
@@ -1522,7 +1534,8 @@ def _parse_form(req, edit_id=None) -> tuple[dict, str | None]:
             'adults':            adults,
             'children_info':     json.dumps(children_info, ensure_ascii=False),
             'total_people':      total,
-            'duration_minutes':  int(f.get('duration_minutes', 105)),
+            'duration_minutes':  duration_minutes,
+            'end_time_unspecified': end_time_unspecified,
             'private_room':      1 if 'private_room' in f else 0,
             'is_vip':            1 if 'is_vip' in f else 0,
             'is_regular':        1 if 'is_regular' in f else 0,

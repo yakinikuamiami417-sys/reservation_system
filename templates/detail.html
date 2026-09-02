@@ -86,9 +86,13 @@
           <div class="fw-bold">
             {{ jp_date(reservation.date) }}<br>
             {{ reservation.time_slot }}〜
+            {% if reservation.end_time_unspecified %}
+            <span class="badge bg-secondary">終了時刻未定（目安2時間）</span>
+            {% else %}
             {% set h = reservation.duration_minutes // 60 %}
             {% set m = reservation.duration_minutes % 60 %}
             （{{ h }}時間{% if m %}{{ m }}分{% endif %}）
+            {% endif %}
           </div>
         </div>
 

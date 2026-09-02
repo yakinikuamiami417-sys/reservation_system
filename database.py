@@ -72,6 +72,7 @@ def init_db():
         ('deleted_at',   'TEXT'),   # ゴミ箱に移動した日時
         ('special_tags', "TEXT NOT NULL DEFAULT '[]'"),  # 特記事項タグ（妊婦・バースデー・アレルギー等）
         ('is_regular',   'INTEGER NOT NULL DEFAULT 0'),  # 常連フラグ（スタッフ手動設定）
+        ('end_time_unspecified', 'INTEGER NOT NULL DEFAULT 0'),  # 終了時刻未定フラグ（余裕がある時、退店時刻を区切らずに受ける予約）
     ]
     if _IS_PG:
         with engine.begin() as con:
@@ -132,6 +133,7 @@ def save_reservation(data: dict) -> int:
         'is_vip':            data['is_vip'],
         'is_group':          data['is_group'],
         'is_regular':        data.get('is_regular', 0),
+        'end_time_unspecified': data.get('end_time_unspecified', 0),
         'budget_per_person': data.get('budget_per_person'),
         'needs_type':        data.get('needs_type'),
         'gender_male':       data.get('gender_male'),
@@ -149,11 +151,11 @@ def save_reservation(data: dict) -> int:
     sql = """
         INSERT INTO reservations
         (date, time_slot, name, phone, adults, children_info, total_people,
-         duration_minutes, private_room, is_vip, is_group, is_regular,
+         duration_minutes, private_room, is_vip, is_group, is_regular, end_time_unspecified,
          budget_per_person, needs_type, gender_male, gender_female, organizer_note,
          notes, menu_note, sales_amount, special_tags, assigned_tables, status, created_at, updated_at)
         VALUES (:date, :time_slot, :name, :phone, :adults, :children_info, :total_people,
-         :duration_minutes, :private_room, :is_vip, :is_group, :is_regular,
+         :duration_minutes, :private_room, :is_vip, :is_group, :is_regular, :end_time_unspecified,
          :budget_per_person, :needs_type, :gender_male, :gender_female, :organizer_note,
          :notes, :menu_note, :sales_amount, :special_tags, :assigned_tables, :status, :created_at, :updated_at)
     """
@@ -250,6 +252,7 @@ def update_reservation(res_id: int, data: dict):
         'is_vip':            data['is_vip'],
         'is_group':          data['is_group'],
         'is_regular':        data.get('is_regular', 0),
+        'end_time_unspecified': data.get('end_time_unspecified', 0),
         'budget_per_person': data.get('budget_per_person'),
         'needs_type':        data.get('needs_type'),
         'gender_male':       data.get('gender_male'),
@@ -271,6 +274,7 @@ def update_reservation(res_id: int, data: dict):
             adults=:adults, children_info=:children_info, total_people=:total_people,
             duration_minutes=:duration_minutes, private_room=:private_room,
             is_vip=:is_vip, is_group=:is_group, is_regular=:is_regular,
+            end_time_unspecified=:end_time_unspecified,
             budget_per_person=:budget_per_person, needs_type=:needs_type,
             gender_male=:gender_male, gender_female=:gender_female,
             organizer_note=:organizer_note, notes=:notes,
