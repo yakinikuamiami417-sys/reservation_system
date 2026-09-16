@@ -90,3 +90,46 @@ https://kiriniya-app.onrender.com
 
 - 無料プランは15分間アクセスがないとスリープします（最初のアクセスに30〜60秒かかる）
 - 月$7の有料プランにするとスリープなしで快適に使えます
+
+---
+
+## 自動バックアップ設定（毎日メールで送信）
+
+これまでは画面右上の「↓」ボタンで手動ダウンロードするしかなく、忘れると
+バックアップが途切れていました。この設定をすると、**毎日決まった時刻に
+自動で予約全件・顧客集計・POS売上明細をまとめたExcelが指定のメールアドレスに
+届く**ようになります（`daily_backup.py` が実行する処理）。
+
+### ステップA: 送信専用のGmailアプリパスワードを発行
+
+1. バックアップメールの送信元にするGmailアカウントでログイン
+   （新しく専用アカウントを作ってもOK）
+2. https://myaccount.google.com/apppasswords にアクセス
+3. 「アプリ名」に `kiriniya-backup` などと入力して作成
+4. 表示された16桁のパスワードをコピーして保存
+   （これは通常のログインパスワードとは別物です）
+
+### ステップB: Renderで「Cron Job」を作成
+
+1. Renderダッシュボードで「New +」→「Cron Job」
+2. 「Connect a repository」→ 既存の `kiriniya-reservation` を選択
+3. 設定：
+   - Name: `kiriniya-daily-backup`
+   - Region: Singapore（Web Service・DBと同じにする）
+   - Build Command: `pip install -r requirements.txt`
+   - Command: `python daily_backup.py`
+   - Schedule: `0 18 * * *`
+     （UTC基準のcron式。日本時間の毎日AM3:00に実行される）
+   - Plan: 最小プランでOK（実行は毎回数秒〜数十秒で終わるため）
+4. 「Environment Variables」に以下を追加：
+   - `DATABASE_URL` = ステップ2でコピーしたDBのURL（Web Serviceと同じ値）
+   - `BACKUP_EMAIL_FROM` = ステップAで使ったGmailアドレス
+   - `BACKUP_EMAIL_APP_PASSWORD` = ステップAで発行した16桁のアプリパスワード
+   - `BACKUP_EMAIL_TO` = バックアップを受け取りたいメールアドレス
+5. 「Create Cron Job」をクリック
+
+### 動作確認
+
+作成後、Renderの管理画面から「Trigger Run」（手動実行）を選ぶと、その場で
+1回実行できます。設定したメールアドレスにExcel添付のメールが届けば成功です。
+届かない場合はRender側のログでエラー内容（環境変数の設定漏れ等）を確認してください。
