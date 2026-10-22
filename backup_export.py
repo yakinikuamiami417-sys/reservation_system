@@ -28,17 +28,19 @@ def build_backup_workbook_bytes() -> bytes:
     ws1 = wb.active
     ws1.title = '予約全件'
     ws1.append([
-        'ID', '日付', '時間', '氏名', '電話番号',
+        'ID', '日付', '時間', '氏名', '電話番号', '受付担当者',
         '大人', '子供', '合計人数', '利用時間(分)',
-        '個室', 'VIP', '団体', '予算/人', 'ニーズ',
+        '個室希望', 'VIP', '団体', '予算/人', 'ニーズ',
         '男性', '女性', '幹事メモ', '備考', 'メニュー', '売上',
         'テーブル', 'ステータス', '来店受付日時', '登録日時', '更新日時',
     ])
+    PRIV_LEVEL_LABEL = {'required': '必ず個室', 'preferred': 'できれば個室'}
     for r in all_res:
         ws1.append([
-            r['id'], r['date'], r['time_slot'], r['name'], r['phone'],
+            r['id'], r['date'], r['time_slot'], r['name'], r['phone'], r.get('staff_name') or '',
             r['adults'], len(r['children_info']), r['total_people'], r['duration_minutes'],
-            '○' if r['private_room'] else '', '○' if r['is_vip'] else '', '○' if r['is_group'] else '',
+            (PRIV_LEVEL_LABEL.get(r.get('private_room_level'), '○') if r['private_room'] else ''),
+            '○' if r['is_vip'] else '', '○' if r['is_group'] else '',
             r.get('budget_per_person') or '', r.get('needs_type') or '',
             r.get('gender_male') or '', r.get('gender_female') or '',
             r.get('organizer_note') or '', r.get('notes') or '',

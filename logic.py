@@ -148,6 +148,8 @@ def assign_seats(reservation, existing_list):
     time_slot  = reservation.get('time_slot', '18:00')
     is_vip     = bool(reservation.get('is_vip', 0))
     wants_priv = bool(reservation.get('private_room', 0))
+    # 個室希望の強さ: 'required'(必ず個室) / 'preferred'(できれば個室)。未指定は'required'扱い（従来動作）
+    priv_level = reservation.get('private_room_level') or 'required'
     excl_id    = reservation.get('id')
 
     occupied, blocked = _get_occupied_and_blocked(time_slot, duration, existing_list, excl_id)
@@ -155,8 +157,10 @@ def assign_seats(reservation, existing_list):
     def avail(t_id):
         return t_id not in occupied and t_id not in blocked
 
+    priv_fallback_note = ''
+
     def res(tables, capacity, note):
-        return {"tables": tables, "capacity": capacity, "note": note}
+        return {"tables": tables, "capacity": capacity, "note": priv_fallback_note + note}
 
     # ── 個室希望: VIPエリア(10・11番)のみ案内。1〜5番には絶対に配置しない ──
     if wants_priv:
@@ -168,9 +172,14 @@ def assign_seats(reservation, existing_list):
             return res([10, 11], 14, "10・11番連結【個室エリア】14席")
         if adults <= 6 and avail(11):          # 10番満席時の代替
             return res([11], 8, "11番【個室エリア代替】8席")
+        # ここまでで個室エリアが確保できなかった場合
         if not is_vip:
-            # VIPフラグがない個室希望は、空きなければ通常席に案内しない
-            return res([], 0, "⚠️ 個室エリア(10・11番)が満席です。VIPフラグをONにすると他の席へ案内できます")
+            if priv_level == 'preferred':
+                # 「できれば個室希望」は個室が満席でも通常席へフォールスルーする
+                priv_fallback_note = "🚪個室満席のため通常席をご案内／ "
+            else:
+                # 「必ず個室希望」は、空きなければ通常席に案内しない
+                return res([], 0, "⚠️ 個室エリア(10・11番)が満席です。VIPフラグをONにすると他の席へ案内できます")
 
     # ── VIP特例: VIPエリア優先、なければ通常席へフォールスルー ──
     if is_vip:

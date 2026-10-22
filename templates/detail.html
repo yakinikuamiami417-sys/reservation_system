@@ -64,7 +64,9 @@
         <span class="badge badge-group text-white fs-6"><i class="bi bi-people-fill me-1"></i>団体</span>
       {% endif %}
       {% if reservation.private_room %}
-        <span class="badge badge-priv fs-6"><i class="bi bi-door-closed me-1"></i>個室</span>
+        <span class="badge badge-priv fs-6"><i class="bi bi-door-closed me-1"></i>個室
+          {%- if reservation.private_room_level == 'preferred' %}（できれば）{% else %}（必ず）{% endif -%}
+        </span>
       {% endif %}
       {% for key in active_special_tags(reservation) %}
       {% set t = SPECIAL_TAGS[key] %}
@@ -104,6 +106,13 @@
             </a>
           </div>
         </div>
+
+        {% if reservation.staff_name %}
+        <div class="col-sm-6">
+          <div class="text-muted small">🎧 受付担当者</div>
+          <div class="fw-bold">{{ reservation.staff_name }}</div>
+        </div>
+        {% endif %}
 
         {% if reservation.status == 'visited' and reservation.visited_at %}
         <div class="col-sm-6">

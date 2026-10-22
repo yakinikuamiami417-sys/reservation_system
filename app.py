@@ -1303,20 +1303,21 @@ def backup_csv():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        'ID', '日付', '時間', '氏名', '電話番号',
+        'ID', '日付', '時間', '氏名', '電話番号', '受付担当者',
         '大人', '子供', '合計人数', '利用時間(分)',
-        '個室', 'VIP', '団体', '予算/人', 'ニーズ',
+        '個室希望', 'VIP', '団体', '予算/人', 'ニーズ',
         '男性', '女性', '幹事メモ', '備考', 'メニュー', '売上',
         'テーブル', 'ステータス', '来店受付日時', '登録日時', '更新日時',
     ])
+    PRIV_LEVEL_LABEL = {'required': '必ず個室', 'preferred': 'できれば個室'}
     for r in rows:
         d = dict(r)
         writer.writerow([
-            d['id'], d['date'], d['time_slot'], d['name'], d['phone'],
+            d['id'], d['date'], d['time_slot'], d['name'], d['phone'], d.get('staff_name') or '',
             d['adults'],
             len(json.loads(d['children_info'] or '[]')),
             d['total_people'], d['duration_minutes'],
-            '○' if d['private_room'] else '',
+            (PRIV_LEVEL_LABEL.get(d.get('private_room_level'), '○') if d['private_room'] else ''),
             '○' if d['is_vip'] else '',
             '○' if d['is_group'] else '',
             d['budget_per_person'] or '',
@@ -1465,6 +1466,13 @@ def _parse_form(req, edit_id=None) -> tuple[dict, str | None]:
         # 終了時刻未定の場合、フォーム側で選ばれた利用時間は無視し、
         # 席確保・回転管理用に目安時間(2時間)を強制する（サーバー側でも二重に担保）
         duration_minutes = FLEXIBLE_END_DURATION_MIN if end_time_unspecified else int(f.get('duration_minutes', 105))
+        private_room = 1 if 'private_room' in f else 0
+        # 個室希望レベルは個室希望がONの時のみ有効。不正値は'required'にフォールバック
+        private_room_level = None
+        if private_room:
+            private_room_level = f.get('private_room_level') or 'required'
+            if private_room_level not in ('required', 'preferred'):
+                private_room_level = 'required'
 
         d = {
             'date':              f['date'],
@@ -1476,7 +1484,9 @@ def _parse_form(req, edit_id=None) -> tuple[dict, str | None]:
             'total_people':      total,
             'duration_minutes':  duration_minutes,
             'end_time_unspecified': end_time_unspecified,
-            'private_room':      1 if 'private_room' in f else 0,
+            'staff_name':        f.get('staff_name', '').strip() or None,
+            'private_room':      private_room,
+            'private_room_level': private_room_level,
             'is_vip':            1 if 'is_vip' in f else 0,
             'is_regular':        1 if 'is_regular' in f else 0,
             'is_group':          1 if total >= 8 else 0,

@@ -73,6 +73,8 @@ def init_db():
         ('special_tags', "TEXT NOT NULL DEFAULT '[]'"),  # 特記事項タグ（妊婦・バースデー・アレルギー等）
         ('is_regular',   'INTEGER NOT NULL DEFAULT 0'),  # 常連フラグ（スタッフ手動設定）
         ('end_time_unspecified', 'INTEGER NOT NULL DEFAULT 0'),  # 終了時刻未定フラグ（余裕がある時、退店時刻を区切らずに受ける予約）
+        ('staff_name',   'TEXT'),   # 電話を受けた担当者（受付スタッフ）の名前
+        ('private_room_level', 'TEXT'),  # 個室希望の強さ: 'required'(必ず) / 'preferred'(できれば)
     ]
     if _IS_PG:
         with engine.begin() as con:
@@ -145,6 +147,8 @@ def save_reservation(data: dict) -> int:
         'special_tags':      data['special_tags'] if isinstance(data.get('special_tags'), str) else json.dumps(data.get('special_tags') or [], ensure_ascii=False),
         'assigned_tables':   data['assigned_tables'] if isinstance(data['assigned_tables'], str) else json.dumps(data['assigned_tables']),
         'status':            data.get('status', 'confirmed'),
+        'staff_name':        data.get('staff_name'),
+        'private_room_level': data.get('private_room_level'),
         'created_at':        now,
         'updated_at':        now,
     }
@@ -153,11 +157,13 @@ def save_reservation(data: dict) -> int:
         (date, time_slot, name, phone, adults, children_info, total_people,
          duration_minutes, private_room, is_vip, is_group, is_regular, end_time_unspecified,
          budget_per_person, needs_type, gender_male, gender_female, organizer_note,
-         notes, menu_note, sales_amount, special_tags, assigned_tables, status, created_at, updated_at)
+         notes, menu_note, sales_amount, special_tags, assigned_tables, status,
+         staff_name, private_room_level, created_at, updated_at)
         VALUES (:date, :time_slot, :name, :phone, :adults, :children_info, :total_people,
          :duration_minutes, :private_room, :is_vip, :is_group, :is_regular, :end_time_unspecified,
          :budget_per_person, :needs_type, :gender_male, :gender_female, :organizer_note,
-         :notes, :menu_note, :sales_amount, :special_tags, :assigned_tables, :status, :created_at, :updated_at)
+         :notes, :menu_note, :sales_amount, :special_tags, :assigned_tables, :status,
+         :staff_name, :private_room_level, :created_at, :updated_at)
     """
     if _IS_PG:
         sql += ' RETURNING id'
@@ -264,6 +270,8 @@ def update_reservation(res_id: int, data: dict):
         'special_tags':      data['special_tags'] if isinstance(data.get('special_tags'), str) else json.dumps(data.get('special_tags') or [], ensure_ascii=False),
         'assigned_tables':   data['assigned_tables'] if isinstance(data['assigned_tables'], str) else json.dumps(data['assigned_tables']),
         'status':            data.get('status', 'confirmed'),
+        'staff_name':        data.get('staff_name'),
+        'private_room_level': data.get('private_room_level'),
         'updated_at':        _now(),
         'id':                res_id,
     }
@@ -279,7 +287,9 @@ def update_reservation(res_id: int, data: dict):
             gender_male=:gender_male, gender_female=:gender_female,
             organizer_note=:organizer_note, notes=:notes,
             menu_note=:menu_note, sales_amount=:sales_amount, special_tags=:special_tags,
-            assigned_tables=:assigned_tables, status=:status, updated_at=:updated_at
+            assigned_tables=:assigned_tables, status=:status,
+            staff_name=:staff_name, private_room_level=:private_room_level,
+            updated_at=:updated_at
             WHERE id=:id
         '''), params)
 

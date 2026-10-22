@@ -65,6 +65,14 @@
       </div>
       <div class="card-body">
 
+        <!-- 受付担当者 -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold">受付担当者（電話を受けたスタッフ）</label>
+          <input type="text" name="staff_name" class="form-control"
+                 placeholder="例）田中"
+                 value="{{ reservation.staff_name if reservation and reservation.staff_name else '' }}">
+        </div>
+
         <!-- 氏名 -->
         <div class="mb-3">
           <label class="form-label required fw-semibold">氏名（フルネーム）</label>
@@ -266,14 +274,27 @@
       </div>
       <div class="card-body">
 
-        <div class="form-check form-switch mb-3">
+        <div class="form-check form-switch mb-2">
           <input class="form-check-input" type="checkbox" id="swPrivate" name="private_room"
-                 role="switch"
+                 role="switch" onchange="togglePrivateLevel()"
                  {{ 'checked' if reservation and reservation.private_room else '' }}>
           <label class="form-check-label" for="swPrivate">
             <i class="bi bi-door-closed me-1"></i><strong>個室希望</strong>
             <small class="d-block text-muted">10番(バッファ席)またはVIPエリアを優先案内</small>
           </label>
+        </div>
+        <div id="privateLevelBox" class="mb-3 ms-4 {{ '' if reservation and reservation.private_room else 'd-none' }}">
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="private_room_level" id="privLevelRequired" value="required"
+                   {{ 'checked' if not reservation or not reservation.private_room_level or reservation.private_room_level == 'required' else '' }}>
+            <label class="form-check-label" for="privLevelRequired">必ず個室希望</label>
+          </div>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="private_room_level" id="privLevelPreferred" value="preferred"
+                   {{ 'checked' if reservation and reservation.private_room_level == 'preferred' else '' }}>
+            <label class="form-check-label" for="privLevelPreferred">できれば個室希望</label>
+          </div>
+          <div class="form-text text-muted">「必ず」は個室が満席の場合は通常席をご案内せず要確認とします。「できれば」は満席なら自動で通常席をご案内します。</div>
         </div>
 
         <div class="form-check form-switch mb-3">
@@ -680,6 +701,7 @@ function applySmartMemo() {
   // 個室希望
   if (parsed.privateRoom) {
     document.getElementById('swPrivate').checked = true;
+    togglePrivateLevel();
     applied.push('🚪 個室希望');
   }
 
@@ -727,6 +749,12 @@ function toggleEndTimeUnspecified() {
   const checked = document.getElementById('fEndUnspecified').checked;
   document.getElementById('fDuration').disabled = checked;
   triggerCheck();
+}
+
+// 個室希望ON/OFFで「必ず／できれば」ラジオの表示切替
+function togglePrivateLevel() {
+  const checked = document.getElementById('swPrivate').checked;
+  document.getElementById('privateLevelBox').classList.toggle('d-none', !checked);
 }
 
 // ======================================================

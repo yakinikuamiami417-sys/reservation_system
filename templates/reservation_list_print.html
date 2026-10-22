@@ -145,7 +145,7 @@
       <tr class="{{ row_cls|join(' ') }}">
         <td class="c">{{ loop.index }}</td>
         <td class="c">{{ res.time_slot }}</td>
-        <td class="name">{{ res.name }} 様{% if res.private_room %}（個室）{% endif %}</td>
+        <td class="name">{{ res.name }} 様{% if res.private_room %}（個室{% if res.private_room_level == 'preferred' %}・できれば{% endif %}）{% endif %}</td>
         <td class="c">{{ res.total_people }}名{% if res.children_info %}<br><span style="font-size:.68rem;color:#888">大{{ res.adults }}・子{{ res.children_info|length }}</span>{% endif %}</td>
         <td class="c">{% for t in res.assigned_tables %}{{ t }}番{% if not loop.last %}・{% endif %}{% endfor %}{% if not res.assigned_tables %}<span style="color:#bbb">未定</span>{% endif %}</td>
         <td class="c">{{ res.phone }}</td>
