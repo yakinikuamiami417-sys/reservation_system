@@ -77,6 +77,14 @@
   <p>{{ date_display }}　合計 {{ reservations|length }} 組 / {{ reservations|sum(attribute='total_people') }} 名</p>
 </div>
 
+{% if closure %}
+<div class="closure-banner d-flex flex-wrap align-items-center gap-2 mb-3">
+  <i class="bi bi-calendar-x fs-5"></i>
+  この日は【{{ closure.label }}】に設定されています{% if closure.reason %}（{{ closure.reason }}）{% endif %}。お客様向け画面では予約不可と表示されます。
+  <a href="/closures?month={{ target_date[:7] }}" class="btn btn-sm btn-outline-danger ms-auto no-print">店休日の設定を確認</a>
+</div>
+{% endif %}
+
 <!-- ===== 警告バナー ===== -->
 {% if warnings %}
 <div class="alert mb-3" style="border:2px solid #e63946; background:#fff5f5">

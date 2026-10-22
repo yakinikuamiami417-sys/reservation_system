@@ -117,6 +117,20 @@ def init_db():
         con.execute(text('CREATE INDEX IF NOT EXISTS idx_pos_receipt_key ON pos_sales(receipt_key)'))
         con.execute(text('CREATE INDEX IF NOT EXISTS idx_pos_match_status ON pos_sales(match_status)'))
 
+    # ── 代休・臨時店休日テーブル ──
+    # 1日1行。行があればその日は休み、行を消せば通常営業に戻る。
+    closure_ddl = """
+        CREATE TABLE IF NOT EXISTS store_closures (
+            date          TEXT  PRIMARY KEY,
+            closure_type  TEXT  NOT NULL DEFAULT 'substitute',
+            reason        TEXT,
+            created_at    TEXT  NOT NULL,
+            updated_at    TEXT  NOT NULL
+        )
+    """
+    with engine.begin() as con:
+        con.execute(text(closure_ddl))
+
     print("[OK] DB初期化完了")
 
 
@@ -423,6 +437,58 @@ def get_matched_reservation_ids(target_date: str) -> set:
             {"date": target_date}
         ).all()
     return {r[0] for r in rows}
+
+
+# ============================================================
+# 代休・臨時店休日
+# closure_type: 'substitute'(代休) / 'temporary'(臨時休業)
+# ============================================================
+def get_closure(target_date: str):
+    with engine.connect() as con:
+        row = con.execute(
+            text("SELECT * FROM store_closures WHERE date=:date"), {"date": target_date}
+        ).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def get_closures_between(date_from: str, date_to: str) -> dict:
+    """date_from〜date_to（両端含む）の店休日を {日付: 行dict} で返す。"""
+    with engine.connect() as con:
+        rows = con.execute(
+            text("SELECT * FROM store_closures WHERE date BETWEEN :f AND :t ORDER BY date"),
+            {"f": date_from, "t": date_to}
+        ).mappings().all()
+    return {r['date']: dict(r) for r in rows}
+
+
+def set_closure(target_date: str, closure_type: str, reason: str = None):
+    """指定日を店休日にする（既に休みなら種別・理由を上書き）。"""
+    now = _now()
+    with engine.begin() as con:
+        con.execute(text("DELETE FROM store_closures WHERE date=:date"), {"date": target_date})
+        con.execute(
+            text("INSERT INTO store_closures (date, closure_type, reason, created_at, updated_at) "
+                 "VALUES (:date, :type, :reason, :now, :now)"),
+            {"date": target_date, "type": closure_type, "reason": reason, "now": now}
+        )
+
+
+def delete_closure(target_date: str):
+    """店休日を解除して通常営業日に戻す。"""
+    with engine.begin() as con:
+        con.execute(text("DELETE FROM store_closures WHERE date=:date"), {"date": target_date})
+
+
+def count_reservations_between(date_from: str, date_to: str) -> dict:
+    """期間内の有効な予約件数を {日付: 件数} で返す（店休日カレンダーの警告表示用）。"""
+    with engine.connect() as con:
+        rows = con.execute(
+            text("SELECT date, COUNT(*) AS n FROM reservations "
+                 "WHERE date BETWEEN :f AND :t AND status!='cancelled' AND is_deleted=0 "
+                 "GROUP BY date"),
+            {"f": date_from, "t": date_to}
+        ).all()
+    return {r[0]: r[1] for r in rows}
 
 
 def set_pos_sale_group_match(receipt_key: str, reservation_id, match_status: str):

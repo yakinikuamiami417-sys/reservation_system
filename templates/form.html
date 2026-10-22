@@ -109,7 +109,10 @@
             <label class="form-label required fw-semibold">日付</label>
             <input type="date" name="date" id="fDate" class="form-control" required
                    value="{{ reservation.date if reservation else default_date }}"
-                   onchange="triggerCheck()">
+                   onchange="triggerCheck(); checkClosure()">
+            <div id="closureWarn" class="closure-banner small mt-2 d-none">
+              <i class="bi bi-calendar-x me-1"></i><span id="closureWarnText"></span>
+            </div>
           </div>
           <div class="col-sm-6">
             <label class="form-label required fw-semibold">時間（15分単位）</label>
@@ -758,6 +761,29 @@ function togglePrivateLevel() {
 }
 
 // ======================================================
+// 代休・臨時店休日チェック（休みの日に予約を入れてしまうのを防ぐ）
+// ======================================================
+async function checkClosure() {
+  const d = document.getElementById('fDate').value;
+  const box = document.getElementById('closureWarn');
+  if (!d) { box.classList.add('d-none'); return; }
+  try {
+    const r = await fetch('/api/closure-status?date=' + encodeURIComponent(d));
+    const data = await r.json();
+    if (data.closed) {
+      document.getElementById('closureWarnText').textContent =
+        'この日は【' + data.closure.label + '】に設定されています' +
+        (data.closure.reason ? '（' + data.closure.reason + '）' : '') + '。日付をご確認ください';
+      box.classList.remove('d-none');
+    } else {
+      box.classList.add('d-none');
+    }
+  } catch (e) {
+    box.classList.add('d-none');
+  }
+}
+
+// ======================================================
 // 顧客カルテ（過去の来店履歴）自動呼び出し
 // ======================================================
 function _escHtml(s) {
@@ -1032,6 +1058,7 @@ document.getElementById('resForm').addEventListener('submit', function(e) {
 // ======================================================
 _renderSeatMap();   // 初期状態を描画（編集時は既存席を選択済みで表示）
 triggerCheck();     // 初回チェック実行
+checkClosure();     // 店休日チェック
 loadCustomerHistory(); // 顧客カルテ初回呼び出し（編集時は氏名・電話が入力済み）
 </script>
 {% endblock %}
