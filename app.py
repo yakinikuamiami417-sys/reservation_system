@@ -203,28 +203,60 @@ def _mark_regular_customers(reservations: list) -> list:
     return reservations
 
 # ============================================================
-# 代休・臨時店休日
+# 定休日・代休・臨時店休日
+# 優先順位：日付ごとの個別設定（store_closures） ＞ 曜日の定休日ルール
+#   - 定休日の曜日でも、個別に 'open'（特別営業）を入れればその日は営業
+#   - 営業日の曜日でも、個別に 'substitute' / 'temporary' を入れればその日は休み
 # label はスタッフ画面用、public はお客様向け画面に出す表現
 # ============================================================
+REGULAR_HOLIDAY_WEEKDAYS = (1,)   # 0=月 … 6=日。毎週火曜日が定休日
+REGULAR_HOLIDAY_LABEL = '毎週' + '・'.join(WEEKDAYS_JP[i] for i in REGULAR_HOLIDAY_WEEKDAYS) + '曜日'
+
 CLOSURE_TYPES = {
+    'regular':    {'label': '定休日',   'public': '定休日'},            # 曜日ルールによる休み（DBには保存しない）
     'substitute': {'label': '代休',     'public': '代休（臨時休業）'},
     'temporary':  {'label': '臨時休業', 'public': '臨時休業'},
+    'open':       {'label': '特別営業', 'public': ''},                  # 定休日を個別に営業日へ変更
 }
+CLOSE_TYPES = ('substitute', 'temporary')   # カレンダーから設定できる休みの種類
 STORE_PHONE = os.environ.get('STORE_PHONE', '')  # お客様向け画面に出す店舗電話番号（未設定なら非表示）
 
-def closure_public_message(date_str: str, closure: dict) -> str:
-    """お客様向け：'本日は代休（臨時休業）のためご予約いただけません' 等"""
-    kind = CLOSURE_TYPES.get(closure.get('closure_type'), CLOSURE_TYPES['temporary'])['public']
+def _day_status(d: date, row) -> dict:
+    """1日分の営業状態。row はその日の store_closures の行（無ければ None）"""
+    regular = d.weekday() in REGULAR_HOLIDAY_WEEKDAYS
+    reason  = (row.get('reason') or '') if row else ''
+    if row and row['closure_type'] == 'open':
+        t = 'open'
+    elif row:
+        t = row['closure_type'] if row['closure_type'] in CLOSE_TYPES else 'temporary'
+    elif regular:
+        t = 'regular'
+    else:
+        t = None
+    return {
+        'closed':  t in ('regular',) + CLOSE_TYPES,
+        'type':    t,
+        'label':   CLOSURE_TYPES[t]['label'] if t else '',
+        'reason':  reason,
+        'regular': regular,   # 曜日ルール上の定休日か（個別設定に関係なく）
+    }
+
+def day_status(date_str: str) -> dict:
+    return _day_status(datetime.strptime(date_str, '%Y-%m-%d').date(), get_closure(date_str))
+
+def closure_public_message(date_str: str, status: dict) -> str:
+    """お客様向け：'本日は定休日のためご予約いただけません' 等"""
+    kind = CLOSURE_TYPES[status['type']]['public']
     day  = '本日' if date_str == today_jst().isoformat() else jp_date(date_str)
     return f"{day}は{kind}のためご予約いただけません"
 
 def closure_info(date_str: str):
-    """テンプレート用：店休日なら {type, label, reason}、通常営業日なら None"""
-    c = get_closure(date_str)
-    if not c:
+    """テンプレート用：休みの日なら day_status の dict、営業日なら None"""
+    try:
+        st = day_status(date_str)
+    except ValueError:
         return None
-    t = c['closure_type'] if c['closure_type'] in CLOSURE_TYPES else 'temporary'
-    return {'type': t, 'label': CLOSURE_TYPES[t]['label'], 'reason': c.get('reason') or ''}
+    return st if st['closed'] else None
 
 # Jinja2グローバル関数
 app.jinja_env.globals['jp_date'] = jp_date
@@ -264,6 +296,7 @@ def index():
         tables       = TABLES,
         today        = today_jst().isoformat(),
         closure      = closure_info(target_date),
+        special_open = day_status(target_date)['type'] == 'open',
     )
 
 # ============================================================
@@ -626,6 +659,7 @@ def timetable():
         next_date        = (target_dt + timedelta(days=1)).isoformat(),
         today            = today_jst().isoformat(),
         closure          = closure_info(target_date),
+        special_open     = day_status(target_date)['type'] == 'open',
         tables           = TABLES,
         table_data       = table_data,
         time_labels      = time_labels,
@@ -1498,16 +1532,13 @@ def closures_page():
     d = first
     while d <= last:
         ds = d.isoformat()
-        c  = closures.get(ds)
         week.append({
             'date':      ds,
             'day':       d.day,
             'weekday':   d.weekday(),
             'is_today':  d == today,
             'is_past':   d < today,
-            'closure':   ({'type': c['closure_type'],
-                           'label': CLOSURE_TYPES.get(c['closure_type'], CLOSURE_TYPES['temporary'])['label'],
-                           'reason': c.get('reason') or ''} if c else None),
+            'status':    _day_status(d, closures.get(ds)),
             'res_count': counts.get(ds, 0),
             'jp':        jp_date(d),
         })
@@ -1525,7 +1556,8 @@ def closures_page():
         prev_month    = (first - timedelta(days=1)).strftime('%Y-%m'),
         next_month    = next_first.strftime('%Y-%m'),
         this_month    = today.strftime('%Y-%m'),
-        closure_types = CLOSURE_TYPES,
+        closure_types = {k: CLOSURE_TYPES[k] for k in CLOSE_TYPES},
+        regular_label = REGULAR_HOLIDAY_LABEL,
     )
 
 
@@ -1547,18 +1579,22 @@ def api_closure():
     if target_dt < today_jst():
         return jsonify({'ok': False, 'error': '過去の日付は変更できません'}), 400
 
+    # set   : 個別設定を入れる（closure_type = substitute / temporary / open）
+    # clear : 個別設定を消して曜日ルールどおりに戻す（火曜なら定休日、それ以外は通常営業）
     action = data.get('action')
     if action == 'set':
         closure_type = data.get('closure_type')
-        if closure_type not in CLOSURE_TYPES:
+        if closure_type not in CLOSE_TYPES + ('open',):
             return jsonify({'ok': False, 'error': '休みの種類を選んでください'}), 400
+        if closure_type == 'open' and target_dt.weekday() not in REGULAR_HOLIDAY_WEEKDAYS:
+            return jsonify({'ok': False, 'error': '定休日以外の日は「特別営業」にできません'}), 400
         reason = (data.get('reason') or '').strip() or None
         set_closure(target_date, closure_type, reason)
-        return jsonify({'ok': True, 'closed': True})
-    if action == 'clear':
+    elif action == 'clear':
         delete_closure(target_date)
-        return jsonify({'ok': True, 'closed': False})
-    return jsonify({'ok': False, 'error': '操作が不正です'}), 400
+    else:
+        return jsonify({'ok': False, 'error': '操作が不正です'}), 400
+    return jsonify({'ok': True, 'closed': day_status(target_date)['closed']})
 
 
 @app.route('/api/closure-status')
@@ -1582,20 +1618,24 @@ def public_reserve():
         target_dt   = today
         target_date = today.isoformat()
 
-    c = get_closure(target_date)
+    st = day_status(target_date)
+    # お知らせ欄：毎週の定休日は1行の案内にまとめ、個別に変えた日（臨時休業・特別営業）だけを並べる
     upcoming = get_closures_between(today.isoformat(), (today + timedelta(days=60)).isoformat())
     return render_template(
         'public_reserve.html',
-        target_date  = target_date,
-        date_display = jp_date(target_dt),
-        min_date     = today.isoformat(),
-        closed_msg   = closure_public_message(target_date, c) if c else None,
-        upcoming     = [
+        target_date   = target_date,
+        date_display  = jp_date(target_dt),
+        min_date      = today.isoformat(),
+        closed_msg    = closure_public_message(target_date, st) if st['closed'] else None,
+        regular_label = REGULAR_HOLIDAY_LABEL,
+        upcoming      = [
             {'jp': jp_date(ds),
-             'label': CLOSURE_TYPES.get(row['closure_type'], CLOSURE_TYPES['temporary'])['public']}
+             'open': row['closure_type'] == 'open',
+             'label': '特別営業日（ご予約を承ります）' if row['closure_type'] == 'open'
+                      else CLOSURE_TYPES[row['closure_type'] if row['closure_type'] in CLOSE_TYPES else 'temporary']['public']}
             for ds, row in upcoming.items()
         ],
-        store_phone  = STORE_PHONE,
+        store_phone   = STORE_PHONE,
     )
 
 
@@ -1607,11 +1647,11 @@ def api_public_closure():
         datetime.strptime(target_date, '%Y-%m-%d')
     except ValueError:
         return jsonify({'error': '日付が不正です'}), 400
-    c = get_closure(target_date)
+    st = day_status(target_date)
     return jsonify({
         'date':    target_date,
-        'closed':  bool(c),
-        'message': closure_public_message(target_date, c) if c else '',
+        'closed':  st['closed'],
+        'message': closure_public_message(target_date, st) if st['closed'] else '',
     })
 
 

@@ -34,6 +34,12 @@
   この日は【{{ closure.label }}】に設定されています{% if closure.reason %}（{{ closure.reason }}）{% endif %}。お客様向け画面では予約不可と表示されます。
   <a href="/closures?month={{ target_date[:7] }}" class="btn btn-sm btn-outline-danger ms-auto no-print">店休日の設定を確認</a>
 </div>
+{% elif special_open %}
+<div class="alert alert-success d-flex flex-wrap align-items-center gap-2 mb-3 fw-bold">
+  <i class="bi bi-calendar-check fs-5"></i>
+  この日は本来は定休日ですが、【特別営業日】に設定されています。
+  <a href="/closures?month={{ target_date[:7] }}" class="btn btn-sm btn-outline-success ms-auto no-print">店休日の設定を確認</a>
+</div>
 {% endif %}
 
 <div class="row g-4">

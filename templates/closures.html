@@ -4,7 +4,8 @@
 {% block content %}
 <style>
   /* 店休日カレンダー
-     通常営業日＝白、店休日＝赤の斜線、過去日＝グレー。色だけでなく文字でも状態を出す */
+     通常営業日＝白、定休日＝グレーの斜線、臨時の休み＝赤の斜線、特別営業＝緑、過去日＝グレー。
+     色だけでなくバッジの文字でも状態を出す */
   .cl-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
   .cl-head { text-align: center; font-weight: 700; font-size: .85rem; color: #666; padding: 4px 0; }
   .cl-head.sun { color: #c1121f; }
@@ -20,15 +21,22 @@
   .cl-day .res { font-size: .72rem; color: #666; }
   .cl-day.today { box-shadow: 0 0 0 3px var(--kirin-gold); }
   .cl-day.past  { background: #f3f3f3; color: #aaa; opacity: .7; }
-  .cl-day.closed {
+  .cl-day.t-regular {
+    border-color: #6c757d;
+    background: repeating-linear-gradient(45deg, #f1f1f1, #f1f1f1 8px, #e4e4e4 8px, #e4e4e4 16px);
+  }
+  .cl-day.t-substitute, .cl-day.t-temporary {
     border-color: #c1121f;
     background: repeating-linear-gradient(45deg, #fff0f0, #fff0f0 8px, #ffe0e0 8px, #ffe0e0 16px);
   }
-  .cl-day.closed .num { color: #c1121f; }
+  .cl-day.t-substitute .num, .cl-day.t-temporary .num { color: #c1121f; }
+  .cl-day.t-open { border-color: #198754; background: #e9f9ef; }
   .cl-badge {
     display: inline-block; background: #c1121f; color: #fff; border-radius: 4px;
     padding: 1px 6px; font-size: .75rem; font-weight: 800; align-self: flex-start;
   }
+  .cl-badge.regular { background: #6c757d; }
+  .cl-badge.open    { background: #198754; }
   .cl-reason { font-size: .68rem; color: #7a1010; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cl-empty { min-height: 84px; }
 
@@ -51,7 +59,7 @@
 <!-- ===== ヘッダー ===== -->
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
   <a href="/" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i></a>
-  <h4 class="mb-0 me-2">🗓️ 代休・臨時店休日の設定</h4>
+  <h4 class="mb-0 me-2">🗓️ 定休日・店休日の設定</h4>
   <a href="/closures?month={{ prev_month }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-chevron-left"></i></a>
   <span class="fw-bold fs-5">{{ month_label }}</span>
   <a href="/closures?month={{ next_month }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-chevron-right"></i></a>
@@ -62,6 +70,10 @@
 </div>
 
 <div id="clRoot" class="cl-locked">
+  <div class="small text-muted mb-2">
+    <i class="bi bi-info-circle me-1"></i>定休日は<strong>{{ regular_label }}</strong>です（自動）。
+    日付ごとに「特別営業」や「代休・臨時休業」に変えた場合は、その日の設定が優先されます。
+  </div>
   <div id="clLockedHint" class="alert alert-secondary py-2 small d-none mb-3">
     <i class="bi bi-lock-fill me-1"></i>誤操作防止のためロックされています。右上の「ロック中（タップで編集開始）」を押してから日付をタップしてください。
   </div>
@@ -80,19 +92,25 @@
       <div class="cl-grid">
         {% for week in weeks %}{% for d in week %}
           {% if d %}
+          {% set st = d.status %}
           <button type="button"
-                  class="cl-day {{ 'sat' if d.weekday == 5 else ('sun' if d.weekday == 6 else '') }} {{ 'today' if d.is_today }} {{ 'past' if d.is_past }} {{ 'closed' if d.closure }}"
+                  class="cl-day {{ 'sat' if d.weekday == 5 else ('sun' if d.weekday == 6 else '') }} {{ 'today' if d.is_today }} {{ 'past' if d.is_past }} {{ 't-' ~ st.type if st.type }}"
                   data-date="{{ d.date }}" data-jp="{{ d.jp }}" data-res="{{ d.res_count }}"
-                  data-closed="{{ '1' if d.closure else '0' }}"
-                  data-label="{{ d.closure.label if d.closure else '' }}"
-                  data-reason="{{ d.closure.reason if d.closure else '' }}"
+                  data-type="{{ st.type or 'normal' }}"
+                  data-regular="{{ '1' if st.regular else '0' }}"
+                  data-label="{{ st.label }}"
+                  data-reason="{{ st.reason }}"
                   {% if d.is_past %}disabled{% endif %}
                   onclick="onDayTap(this)">
             <span class="num">{{ d.day }}</span>
-            {% if d.closure %}
-              <span class="cl-badge">休 {{ d.closure.label }}</span>
-              {% if d.closure.reason %}<span class="cl-reason">{{ d.closure.reason }}</span>{% endif %}
+            {% if st.type == 'regular' %}
+              <span class="cl-badge regular">休 定休日</span>
+            {% elif st.type == 'open' %}
+              <span class="cl-badge open">特別営業</span>
+            {% elif st.type %}
+              <span class="cl-badge">休 {{ st.label }}</span>
             {% endif %}
+            {% if st.reason %}<span class="cl-reason">{{ st.reason }}</span>{% endif %}
             {% if d.res_count %}<span class="res"><i class="bi bi-people-fill"></i> 予約{{ d.res_count }}件</span>{% endif %}
           </button>
           {% else %}
@@ -104,15 +122,17 @@
   </div>
 
   <div class="d-flex flex-wrap gap-3 mt-3 small text-muted">
-    <span><span class="cl-badge">休 代休</span> 赤い斜線の日＝お客様向け画面で「ご予約いただけません」と表示されます</span>
+    <span><span class="cl-badge regular">休 定休日</span> {{ regular_label }}（自動）</span>
+    <span><span class="cl-badge">休 代休</span> 個別に休みにした日</span>
+    <span><span class="cl-badge open">特別営業</span> 定休日だが営業する日</span>
     <span><i class="bi bi-people-fill"></i> 予約◯件＝その日に入っている予約</span>
   </div>
   <div class="small text-muted mt-1">
-    お客様向けの受付状況ページ：<a href="/yoyaku" target="_blank">/yoyaku</a>
+    「休」の日は、お客様向けの受付状況ページ（<a href="/yoyaku" target="_blank">/yoyaku</a>）で「ご予約いただけません」と表示されます。
   </div>
 </div>
 
-<!-- ===== 確認モーダル（設定・解除の両方） ===== -->
+<!-- ===== 確認モーダル（設定・解除・特別営業の切り替えすべて） ===== -->
 <div class="modal fade" id="closureModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
   <div class="modal-dialog modal-dialog-centered" style="max-width:480px">
     <div class="modal-content">
@@ -124,10 +144,11 @@
         <div class="text-center mb-3">
           <div class="cl-modal-date" id="clModalDate"></div>
           <div class="small text-muted" id="clModalCurrent"></div>
+          <div class="small fw-bold mt-1" id="clModalAfter"></div>
         </div>
 
-        <!-- 設定時のみ -->
-        <div id="clSetFields">
+        <!-- 営業日 → 休みにする時だけ：休みの種類 -->
+        <div id="clTypeFields">
           <div class="fw-semibold small mb-2">休みの種類を選んでください</div>
           <div class="d-grid gap-2 mb-3">
             {% for key, t in closure_types.items() %}
@@ -138,14 +159,28 @@
             </label>
             {% endfor %}
           </div>
-          <label class="form-label small fw-semibold mb-1">社内メモ（任意・お客様には表示されません）</label>
-          <input type="text" id="clReason" class="form-control form-control-sm mb-3" maxlength="60" placeholder="例）設備点検のため／○○の代休">
         </div>
 
-        <!-- その日に予約がある場合の警告 -->
+        <!-- 新しく個別設定を入れる時だけ：社内メモ -->
+        <div id="clReasonField">
+          <label class="form-label small fw-semibold mb-1">社内メモ（任意・お客様には表示されません）</label>
+          <input type="text" id="clReason" class="form-control form-control-sm mb-3" maxlength="60" placeholder="">
+        </div>
+
+        <!-- 定休日 → 特別営業にする時の注意 -->
+        <div id="clOpenWarn" class="alert alert-warning py-2 small d-none">
+          <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>この日は本来、定休日です</div>
+          <div class="mb-2">営業に変えると、お客様向け画面でこの日のご予約を受け付ける表示になります。出勤スタッフや仕入れの手配も確認してください。</div>
+          <label class="d-flex align-items-center gap-2 fw-semibold">
+            <input type="checkbox" id="clOpenAck" class="form-check-input m-0" onchange="updateConfirmState()">
+            定休日を営業日に変えることを確認しました
+          </label>
+        </div>
+
+        <!-- 営業 → 休みになる時、その日に予約がある場合の警告 -->
         <div id="clResWarn" class="alert alert-danger py-2 small d-none">
           <div class="fw-bold mb-1"><i class="bi bi-exclamation-octagon-fill me-1"></i><span id="clResWarnText"></span></div>
-          <div class="mb-2">店休日にしても予約は消えません。お客様へのご連絡・日程変更は別途行ってください。</div>
+          <div class="mb-2">休みにしても予約は消えません。お客様へのご連絡・日程変更は別途行ってください。</div>
           <label class="d-flex align-items-center gap-2 fw-semibold">
             <input type="checkbox" id="clResAck" class="form-check-input m-0" onchange="updateConfirmState()">
             予約が入っていることを確認しました
@@ -167,8 +202,38 @@
 {% block scripts %}
 <script>
 let _clModal  = null;
-let _clTarget = null;   // { date, jp, res, closed, label }
+let _clTarget = null;   // { date, jp, res, mode }
 let _clEdit   = false;
+
+// タップした日の状態ごとの操作内容
+//   close  : 営業日        → 代休・臨時休業にする
+//   open   : 定休日        → 特別営業にする
+//   clear  : 代休・臨時休業 → 個別設定を消す（火曜なら定休日、それ以外は通常営業に戻る）
+//   revert : 特別営業      → 個別設定を消して定休日に戻す
+const CL_MODES = {
+  close: {
+    color: '#c1121f', btnClass: 'btn-danger', icon: 'bi-calendar-x',
+    title: '店休日に設定', button: '休みにする', after: '変更後：休み（予約不可）',
+    question: '本当にこの日を店休日に設定しますか？',
+    action: 'set', pickType: true, reason: '例）設備点検のため／○○の代休', becomesClosed: true,
+  },
+  open: {
+    color: '#198754', btnClass: 'btn-success', icon: 'bi-calendar-check',
+    title: '定休日を特別営業日に変更', button: '特別営業にする', after: '変更後：営業（予約可）',
+    question: '本当にこの日を営業日に変更しますか？',
+    action: 'set', closureType: 'open', reason: '例）連休のため営業／団体予約対応', openAck: true,
+  },
+  clear: {
+    color: '#198754', btnClass: 'btn-success', icon: 'bi-calendar-check',
+    title: '店休日を解除', button: '解除する',
+    question: '本当にこの日の店休日を解除しますか？', action: 'clear',
+  },
+  revert: {
+    color: '#c1121f', btnClass: 'btn-danger', icon: 'bi-calendar-x',
+    title: '特別営業を取り消して定休日に戻す', button: '定休日に戻す', after: '変更後：定休日（予約不可）',
+    question: '本当に特別営業を取り消し、定休日に戻しますか？', action: 'clear', becomesClosed: true,
+  },
+};
 
 function toggleClosureEdit() {
   _clEdit = !_clEdit;
@@ -192,40 +257,42 @@ function onDayTap(el) {
     hint._t = setTimeout(() => hint.classList.add('d-none'), 4000);
     return;
   }
-  _clTarget = {
-    date:   el.dataset.date,
-    jp:     el.dataset.jp,
-    res:    parseInt(el.dataset.res || '0', 10),
-    closed: el.dataset.closed === '1',
-    label:  el.dataset.label,
-  };
-  const setting = !_clTarget.closed;
+  const type    = el.dataset.type;
+  const regular = el.dataset.regular === '1';
+  const mode = type === 'normal' ? 'close'
+             : type === 'regular' ? 'open'
+             : type === 'open' ? 'revert'
+             : 'clear';
+  const m = CL_MODES[mode];
+  _clTarget = { date: el.dataset.date, jp: el.dataset.jp, res: parseInt(el.dataset.res || '0', 10), mode };
 
-  document.getElementById('clModalHeader').style.background = setting ? '#c1121f' : '#198754';
-  document.getElementById('clModalTitle').innerHTML = setting
-    ? '<i class="bi bi-calendar-x me-2"></i>店休日に設定'
-    : '<i class="bi bi-calendar-check me-2"></i>店休日を解除して通常営業に戻す';
+  document.getElementById('clModalHeader').style.background = m.color;
+  document.getElementById('clModalTitle').innerHTML = '<i class="bi ' + m.icon + ' me-2"></i>' + m.title;
   document.getElementById('clModalDate').textContent = _clTarget.jp;
-  document.getElementById('clModalCurrent').textContent = setting
-    ? '現在：通常営業日'
-    : '現在：' + _clTarget.label + (el.dataset.reason ? '（' + el.dataset.reason + '）' : '');
+  document.getElementById('clModalCurrent').textContent = '現在：' +
+    (type === 'normal' ? '通常営業日' : el.dataset.label + (el.dataset.reason ? '（' + el.dataset.reason + '）' : ''));
+  // 解除後の状態は曜日ルール次第（火曜なら定休日に戻る）
+  document.getElementById('clModalAfter').textContent = mode === 'clear'
+    ? (regular ? '解除後：定休日（予約不可のまま）' : '解除後：通常営業（予約可）')
+    : m.after;
 
-  document.getElementById('clSetFields').classList.toggle('d-none', !setting);
+  document.getElementById('clTypeFields').classList.toggle('d-none', !m.pickType);
   document.querySelectorAll('input[name="clType"]').forEach(r => r.checked = false);
+  document.getElementById('clReasonField').classList.toggle('d-none', m.action !== 'set');
   document.getElementById('clReason').value = '';
+  document.getElementById('clReason').placeholder = m.reason || '';
 
-  const warn = document.getElementById('clResWarn');
+  document.getElementById('clOpenAck').checked = false;
+  document.getElementById('clOpenWarn').classList.toggle('d-none', !m.openAck);
+
   document.getElementById('clResAck').checked = false;
-  warn.classList.toggle('d-none', !(setting && _clTarget.res > 0));
+  document.getElementById('clResWarn').classList.toggle('d-none', !(m.becomesClosed && _clTarget.res > 0));
   document.getElementById('clResWarnText').textContent = 'この日は予約が ' + _clTarget.res + ' 件入っています';
 
-  document.getElementById('clQuestion').textContent = setting
-    ? '本当にこの日を店休日に設定しますか？'
-    : '本当にこの日の店休日を解除し、通常営業に戻しますか？';
-
+  document.getElementById('clQuestion').textContent = m.question;
   const btn = document.getElementById('clConfirmBtn');
-  btn.className = 'btn flex-fill fw-bold ' + (setting ? 'btn-danger' : 'btn-success');
-  btn.textContent = setting ? '店休日にする' : '通常営業に戻す';
+  btn.className = 'btn flex-fill fw-bold ' + m.btnClass;
+  btn.textContent = m.button;
 
   document.getElementById('clError').classList.add('d-none');
   updateConfirmState();
@@ -236,17 +303,17 @@ function onDayTap(el) {
 // 必要な選択・確認がそろうまで確定ボタンを押せないようにする
 function updateConfirmState() {
   if (!_clTarget) return;
+  const m = CL_MODES[_clTarget.mode];
   let ok = true;
-  if (!_clTarget.closed) {
-    ok = !!document.querySelector('input[name="clType"]:checked');
-    if (_clTarget.res > 0 && !document.getElementById('clResAck').checked) ok = false;
-  }
+  if (m.pickType && !document.querySelector('input[name="clType"]:checked')) ok = false;
+  if (m.openAck && !document.getElementById('clOpenAck').checked) ok = false;
+  if (m.becomesClosed && _clTarget.res > 0 && !document.getElementById('clResAck').checked) ok = false;
   document.getElementById('clConfirmBtn').disabled = !ok;
 }
 
 async function submitClosure() {
   const btn = document.getElementById('clConfirmBtn');
-  const setting = !_clTarget.closed;
+  const m = CL_MODES[_clTarget.mode];
   const typeEl = document.querySelector('input[name="clType"]:checked');
   btn.disabled = true;
   try {
@@ -256,8 +323,8 @@ async function submitClosure() {
       body: JSON.stringify({
         date:         _clTarget.date,
         confirm_date: _clTarget.date,
-        action:       setting ? 'set' : 'clear',
-        closure_type: typeEl ? typeEl.value : null,
+        action:       m.action,
+        closure_type: m.closureType || (typeEl ? typeEl.value : null),
         reason:       document.getElementById('clReason').value,
       }),
     });

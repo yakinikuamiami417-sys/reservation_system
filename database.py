@@ -118,7 +118,7 @@ def init_db():
         con.execute(text('CREATE INDEX IF NOT EXISTS idx_pos_match_status ON pos_sales(match_status)'))
 
     # ── 代休・臨時店休日テーブル ──
-    # 1日1行。行があればその日は休み、行を消せば通常営業に戻る。
+    # 1日1行の個別設定。行を消すと曜日ルール（定休日 or 通常営業）に戻る。
     closure_ddl = """
         CREATE TABLE IF NOT EXISTS store_closures (
             date          TEXT  PRIMARY KEY,
@@ -440,8 +440,8 @@ def get_matched_reservation_ids(target_date: str) -> set:
 
 
 # ============================================================
-# 代休・臨時店休日
-# closure_type: 'substitute'(代休) / 'temporary'(臨時休業)
+# 代休・臨時店休日（日付ごとの個別設定。曜日の定休日ルールより優先される）
+# closure_type: 'substitute'(代休) / 'temporary'(臨時休業) / 'open'(定休日を特別営業にする)
 # ============================================================
 def get_closure(target_date: str):
     with engine.connect() as con:
