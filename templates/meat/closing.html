@@ -1,0 +1,126 @@
+{% extends "meat/base.html" %}
+{% block title %}{{ period }} 原価{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-2">
+  <a href="{{ url_for('meat.closing', period=prev_period) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-left"></i></a>
+  <h5 class="fw-bold mb-0">{{ period }} の原価</h5>
+  {% if r.status.closed %}<span class="badge bg-success">確定済み</span>{% else %}<span class="badge bg-secondary">計算中</span>{% endif %}
+</div>
+
+{% if not r.status.closed %}
+<div class="card p-3 mb-3" style="font-size:.88rem">
+  <div class="fw-semibold mb-1">締めまでの手順</div>
+  <div>{{ '✅' if r.status.opening_available else '⬜' }} 前月（{{ prev_period }}）の棚卸＝前繰
+    {% if not r.status.opening_available %}<span class="text-muted">…無い場合は前繰0で計算します（使い始めの月）</span>{% endif %}</div>
+  <div>{{ '✅' if r.status.count_confirmed else '⬜' }} 今月の棚卸を確定
+    <a href="{{ url_for('meat.count', period=period) }}">棚卸へ</a></div>
+  <div>{{ '✅' if r.status.has_sales else '⬜' }} 出数（マジレジの商品別売上）を取り込む</div>
+</div>
+{% endif %}
+
+<!-- 社員向け：1人前の原価と先月比 -->
+<h6 class="fw-bold mt-3">1人前の肉の原価（出数が多い順）</h6>
+{% for m in r.menus if m.qty %}
+  {% if loop.index <= 12 %}
+  <div class="card p-2 px-3 mb-2">
+    <div class="d-flex justify-content-between">
+      <span class="fw-semibold">{{ m.menu_name }}</span>
+      <span class="num fs-5 fw-bold">{{ '{:,}'.format(m.cost|round|int) if m.complete else '-' }}円</span>
+    </div>
+    <div class="muted-small d-flex justify-content-between">
+      <span>{{ m.parts|join('・') }}　出数 {{ m.qty }}</span>
+      {% set pv = prev_menu.get(m.menu_name) %}
+      {% if pv and m.complete %}
+        {% set d = (m.cost - pv)|round|int %}
+        <span class="{{ 'text-success' if d < 0 else 'text-danger' if d > 0 }}">先月 {{ '{:,}'.format(pv|round|int) }}円
+          {{ '▼%d'|format(-d) if d < 0 else '▲%d'|format(d) if d > 0 else '±0' }}</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+{% else %}
+  <p class="text-muted" style="font-size:.88rem">出数を取り込むと、メニューごとの1人前の原価が出ます。</p>
+{% endfor %}
+
+<h6 class="fw-bold mt-4">部位ごとの計算</h6>
+<div class="card mb-3" style="overflow-x:auto">
+  <table class="table table-sm mb-0 num" style="font-size:.8rem; white-space:nowrap">
+    <thead><tr><th>部位</th><th class="text-end">前繰</th><th class="text-end">＋仕入</th><th class="text-end">－棚卸</th>
+      <th class="text-end">＝使用分</th><th class="text-end">出数</th><th class="text-end">原価/出数</th><th class="text-end">ロス率</th></tr></thead>
+    <tbody>
+    {% for row in r.rows %}
+      <tr>
+        <td>{{ row.part_name }}</td>
+        <td class="text-end">{{ '{:,}'.format(row.opening_amount) }}</td>
+        <td class="text-end">{{ '{:,}'.format(row.purchase_amount) }}</td>
+        <td class="text-end">{{ '{:,}'.format(row.closing_amount) }}</td>
+        <td class="text-end fw-bold">{{ '{:,}'.format(row.usage_amount) }}<br>
+          <span class="text-muted">{{ '%.1f'|format(row.usage_kg) }}kg</span></td>
+        <td class="text-end">{{ row.sales_qty }}</td>
+        <td class="text-end fw-bold">{{ '{:,}'.format(row.cost_per_sale) if row.cost_per_sale is not none else '-' }}
+          {% set pc = prev_cost.get(row.part_id) %}
+          {% if pc and row.cost_per_sale is not none %}<br><span class="text-muted">先月 {{ '{:,}'.format(pc) }}</span>{% endif %}</td>
+        <td class="text-end">
+          {% if row.loss_rate is not none %}{{ '%.1f'|format(row.loss_rate * 100) }}%
+            <br><span class="text-muted">理論 {{ '%.1f'|format(row.theoretical_kg) }}kg</span>{% else %}-{% endif %}
+          {% set pl = prev_loss.get(row.part_id) %}
+          {% if pl is not none and row.loss_rate is not none %}<br><span class="text-muted">先月 {{ '%.1f'|format(pl * 100) }}%</span>{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="text-muted">まだ数字がありません</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if r.rows %}
+    <tfoot><tr class="fw-bold"><td>合計</td>
+      <td class="text-end">{{ '{:,}'.format(r.total.opening_amount) }}</td>
+      <td class="text-end">{{ '{:,}'.format(r.total.purchase_amount) }}</td>
+      <td class="text-end">{{ '{:,}'.format(r.total.closing_amount) }}</td>
+      <td class="text-end">{{ '{:,}'.format(r.total.usage_amount) }}</td><td colspan="3"></td></tr></tfoot>
+    {% endif %}
+  </table>
+</div>
+<div class="muted-small mb-3">
+  今期使用分 ＝ 前繰 ＋ 今期仕入 － 期末棚卸 ／ 原価 ＝ 今期使用分 ÷ 出数。
+  ロス率 ＝ 実際の使用量と、出数×1人前gの理論使用量との差。盛り過ぎ・歩留まり・廃棄の目安です。
+</div>
+
+{% if r.unmatched %}
+<div class="alert alert-warning" style="font-size:.85rem">
+  グラム表に無いメニューの出数があります（原価に入っていません）：<br>
+  {% for u in r.unmatched %}{{ u.menu_name }}（{{ u.qty }}）{{ '、' if not loop.last }}{% endfor %}
+</div>
+{% endif %}
+
+{% if meat_is_admin and not r.status.closed %}
+<div class="card p-3 mb-3">
+  <div class="fw-semibold mb-2">出数の取り込み</div>
+  <form method="post" enctype="multipart/form-data" class="mb-3">
+    <input type="hidden" name="action" value="upload">
+    <input type="file" name="sales_csv" accept=".csv,text/csv" class="form-control mb-2" required>
+    <button class="btn btn-outline-primary w-100">マジレジの商品別売上CSVを取り込む</button>
+    <div class="muted-small mt-1">「商品名」と「数量」の列がある CSV を読み込みます。取り込むとこの月の出数は入れ替わります。</div>
+  </form>
+  <details>
+    <summary class="muted-small">手で入力する</summary>
+    <form method="post" class="mt-2">
+      <input type="hidden" name="action" value="manual">
+      {% for m in r.menus %}
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <span style="font-size:.85rem">{{ m.menu_name }}</span>
+        <input name="qty__{{ m.menu_name }}" class="form-control form-control-sm num" style="max-width:5rem"
+               inputmode="numeric" value="{{ m.qty or '' }}">
+      </div>
+      {% endfor %}
+      <button class="btn btn-outline-primary w-100 mt-2">出数を保存</button>
+    </form>
+  </details>
+</div>
+
+<form method="post" onsubmit="return confirm('{{ period }} を締めますか？締めた後は数字が変わらなくなります')">
+  <input type="hidden" name="action" value="confirm">
+  <button class="btn btn-danger w-100 fw-bold" {{ 'disabled' if not r.status.count_confirmed }}>この月を締める</button>
+</form>
+{% endif %}
+{% endblock %}
+{% block bottom %}{% endblock %}

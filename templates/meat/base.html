@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}正肉在庫{% endblock %} | キリン屋</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}">
+  <style>
+    :root { --kirin-red: #8B1A1A; --kirin-dark: #1a1a1a; --kirin-gold: #C9A84C; --kirin-bg: #f7f4f0; }
+    body { background: var(--kirin-bg); padding-bottom: 84px; font-size: 15px; }
+    .topbar { background: var(--kirin-dark); border-bottom: 3px solid var(--kirin-red); color: #fff; }
+    .topbar a { color: #fff; text-decoration: none; }
+    .topbar .brand { color: var(--kirin-gold); font-weight: 700; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .num { font-variant-numeric: tabular-nums; }
+    .bottom-bar { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid #ddd;
+                  padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); display: flex; gap: 8px; z-index: 1000; }
+    .bottom-bar .btn { flex: 1; font-weight: 700; padding: 10px 4px; }
+    .warn-field { background: #fff3cd !important; border-color: #e0a800 !important; }
+    .badge-held { background: #6c757d; }
+    .badge-received { background: #0d6efd; }
+    .badge-processed { background: #198754; }
+    .muted-small { font-size: .8rem; color: #6c757d; }
+    .container-narrow { max-width: 720px; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div class="topbar px-3 py-2 d-flex align-items-center gap-2">
+  <a href="/" title="予約管理へ"><i class="bi bi-house"></i></a>
+  <a class="brand" href="{{ url_for('meat.index') }}">正肉在庫</a>
+  <div class="ms-auto d-flex align-items-center gap-2" style="font-size:.8rem">
+    <a href="{{ url_for('meat.closing', period=meat_period) }}"><i class="bi bi-graph-up"></i> 原価</a>
+    {% if meat_is_admin %}
+      <span><i class="bi bi-pencil-square"></i> {{ meat_staff or '登録可' }}</span>
+      <a href="{{ url_for('meat.lock') }}" class="btn btn-sm btn-outline-light py-0">終了</a>
+    {% else %}
+      <a href="{{ url_for('meat.unlock', next=request.path) }}" class="btn btn-sm btn-outline-light py-0">
+        <i class="bi bi-lock"></i> 登録する</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="container container-narrow px-3 py-3">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+    <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert">
+      {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+
+{% block bottom %}
+<nav class="bottom-bar">
+  <a href="{{ url_for('meat.new_lots') }}" class="btn btn-warning"><i class="bi bi-camera"></i> 目利き</a>
+  <a href="{{ url_for('meat.receive') }}" class="btn btn-primary"><i class="bi bi-truck"></i> 納品</a>
+  <a href="{{ url_for('meat.count', period=meat_period) }}" class="btn btn-outline-dark">
+    <i class="bi bi-clipboard-check"></i> 棚卸</a>
+</nav>
+{% endblock %}
+
+<script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
