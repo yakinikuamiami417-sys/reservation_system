@@ -28,7 +28,7 @@
       <span class="num fs-5 fw-bold">{{ '{:,}'.format(m.cost|round|int) if m.complete else '-' }}円</span>
     </div>
     <div class="muted-small d-flex justify-content-between">
-      <span>{{ m.parts|join('・') }}　出数 {{ m.qty }}</span>
+      <span>{{ m.parts|join('・') }}　出数 {{ '%g'|format(m.qty) }}</span>
       {% set pv = prev_menu.get(m.menu_name) %}
       {% if pv and m.complete %}
         {% set d = (m.cost - pv)|round|int %}
@@ -56,7 +56,7 @@
         <td class="text-end">{{ '{:,}'.format(row.closing_amount) }}</td>
         <td class="text-end fw-bold">{{ '{:,}'.format(row.usage_amount) }}<br>
           <span class="text-muted">{{ '%.1f'|format(row.usage_kg) }}kg</span></td>
-        <td class="text-end">{{ row.sales_qty }}</td>
+        <td class="text-end">{{ '%g'|format(row.sales_qty) }}</td>
         <td class="text-end fw-bold">{{ '{:,}'.format(row.cost_per_sale) if row.cost_per_sale is not none else '-' }}
           {% set pc = prev_cost.get(row.part_id) %}
           {% if pc and row.cost_per_sale is not none %}<br><span class="text-muted">先月 {{ '{:,}'.format(pc) }}</span>{% endif %}</td>
@@ -97,9 +97,11 @@
   <div class="fw-semibold mb-2">出数の取り込み</div>
   <form method="post" enctype="multipart/form-data" class="mb-3">
     <input type="hidden" name="action" value="upload">
-    <input type="file" name="sales_csv" accept=".csv,text/csv" class="form-control mb-2" required>
-    <button class="btn btn-outline-primary w-100">マジレジの商品別売上CSVを取り込む</button>
-    <div class="muted-small mt-1">「商品名」と「数量」の列がある CSV を読み込みます。取り込むとこの月の出数は入れ替わります。</div>
+    <input type="file" name="sales_csv" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+           class="form-control mb-2" required>
+    <button class="btn btn-outline-primary w-100">マジレジの出数を取り込む</button>
+    <div class="muted-small mt-1">Dropbox「出数管理 › 月毎集計」の月のファイル（例：2026.11.xlsx の「出数データ」シート）か、
+      マジレジのメニュー別累計の CSV を読み込みます。【H】はハーフとして0.5食で数えます。取り込むとこの月の出数は入れ替わります。</div>
   </form>
   <details>
     <summary class="muted-small">手で入力する</summary>
@@ -109,7 +111,7 @@
       <div class="d-flex justify-content-between align-items-center mb-1">
         <span style="font-size:.85rem">{{ m.menu_name }}</span>
         <input name="qty__{{ m.menu_name }}" class="form-control form-control-sm num" style="max-width:5rem"
-               inputmode="numeric" value="{{ m.qty or '' }}">
+               inputmode="decimal" value="{{ '%g'|format(m.qty) if m.qty else '' }}">
       </div>
       {% endfor %}
       <button class="btn btn-outline-primary w-100 mt-2">出数を保存</button>

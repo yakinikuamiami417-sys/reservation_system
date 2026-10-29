@@ -234,7 +234,7 @@ def init_meat_db():
             purchase_kg      REAL    NOT NULL DEFAULT 0,
             closing_kg       REAL    NOT NULL DEFAULT 0,
             usage_kg         REAL    NOT NULL DEFAULT 0,
-            sales_qty        INTEGER NOT NULL DEFAULT 0,
+            sales_qty        REAL    NOT NULL DEFAULT 0,  -- 【H】ハーフは0.5食として数えるため小数
             cost_per_sale    INTEGER,
             theoretical_kg   REAL    NOT NULL DEFAULT 0,
             loss_rate        REAL,
@@ -781,15 +781,28 @@ def save_menu_sales(period, rows):
                         {'p': period, 'n': name, 'q': qty, 'a': amount})
 
 
+# 【H】（ハーフ）のメニューは、通常サイズのメニューの何人前として数えるか
+HALF_PREFIX = '【H】'
+HALF_FACTOR = 0.5
+# 【H】の名前が通常サイズと違うもの（マジレジの表記 → グラム表のメニュー名）
+HALF_ALIASES = {'特選ヘッドバラ': '特選カルビ（ヘッドバラ）', '特上かいのみ': '特上カルビ（かいのみ）'}
+
+
 def match_menu(pos_name, menu_names):
-    """マジレジの商品名を、グラム表のメニュー名に突き合わせる。
-    完全一致 → 「特選カルビ（ヘッドバラ）タレ」のような味付き表記を前方一致で（最長一致）"""
+    """マジレジの商品名を、グラム表のメニュー名に突き合わせる。戻り値 (メニュー名, 何人前) か (None, 0)。
+    完全一致 → 「特選カルビ（ヘッドバラ）タレ」のような味付き表記を前方一致で（最長一致）。
+    「【H】上カルビ(タレ)」はハーフとして通常サイズの HALF_FACTOR 人前に数える。"""
     key = normalize_menu_name(pos_name)
+    factor = 1
+    if key.startswith(HALF_PREFIX):
+        key = re.sub(r'\((タレ|塩)\)$', '', key[len(HALF_PREFIX):])
+        key = normalize_menu_name(HALF_ALIASES.get(key, key))
+        factor = HALF_FACTOR
     norm = {normalize_menu_name(m): m for m in menu_names}
     if key in norm:
-        return norm[key]
+        return norm[key], factor
     hits = [n for n in norm if n and key.startswith(n)]
-    return norm[max(hits, key=len)] if hits else None
+    return (norm[max(hits, key=len)], factor) if hits else (None, 0)
 
 
 def compute_closing(period):
@@ -807,9 +820,9 @@ def compute_closing(period):
     # 出数をメニュー名に突き合わせる
     qty_by_menu, unmatched = {}, []
     for s in sales:
-        m = match_menu(s['menu_name'], menu_names)
+        m, factor = match_menu(s['menu_name'], menu_names)
         if m:
-            qty_by_menu[m] = qty_by_menu.get(m, 0) + s['qty']
+            qty_by_menu[m] = qty_by_menu.get(m, 0) + s['qty'] * factor
         elif s['qty']:
             unmatched.append(s)
 

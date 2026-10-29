@@ -384,13 +384,48 @@ def count(period):
 # ============================================================
 # 月次原価
 # ============================================================
-_NAME_COLS = ('商品名', 'メニュー名', '品名', 'メニュー', '商品', '印字メニュー名1')
-_QTY_COLS = ('数量', '出数', '点数', '販売数', '個数', '売上数')
+_NAME_COLS = ('メニュー名', '商品名', '品名', 'メニュー', '商品', '印字メニュー名1')
+_QTY_COLS = ('売上数量', '数量', '出数', '点数', '販売数', '個数', '売上数')
 _AMOUNT_COLS = ('金額', '売上金額', '売上', '小計', '合計金額')
 
 
-def parse_sales_csv(raw_bytes):
-    """マジレジの商品別売上CSVから (商品名, 数量, 金額) を取り出す。見出しの名前で列を探す"""
+def _sales_rows(table):
+    """表（行のリスト）から (メニュー名, 数量, 金額) を取り出す。
+    マジレジの「メニュー別累計」は、題名2行のあとに 品番・メニュー名・売価・売上数量・金額 の見出しがある。
+    見出しの無いCSV（Dropbox の 2025.09.csv）は 品番,メニュー名,売価,数量,金額 の並びとして読む。"""
+    table = [['' if c is None else str(c).strip() for c in r] for r in table]
+    ni = qi = ai = None
+    for h, cols in enumerate(table[:20]):
+        pick = lambda names: next((cols.index(n) for n in names if n in cols), None)
+        ni, qi, ai = pick(_NAME_COLS), pick(_QTY_COLS), pick(_AMOUNT_COLS)
+        if ni is not None and qi is not None:
+            body = table[h + 1:]
+            break
+    else:
+        first = next((r for r in table if any(r)), [])
+        if len(first) >= 5 and first[0].isdigit() and _float(first[3]) is not None:
+            ni, qi, ai, body = 1, 3, 4, table
+        else:
+            raise ValueError('「メニュー名」と「売上数量」の列が見つかりませんでした')
+    out = []
+    for r in body:
+        if len(r) <= max(ni, qi) or not r[ni]:
+            continue
+        qty = _float(r[qi])
+        if qty is None:
+            continue
+        amt = _float(r[ai]) if ai is not None and ai < len(r) else 0
+        out.append((r[ni], int(qty), int(amt or 0)))
+    return out
+
+
+def parse_sales_file(raw_bytes, filename=''):
+    """マジレジの出数ファイル（Excel の「出数データ」シート、または CSV）を読む"""
+    if filename.lower().endswith(('.xlsx', '.xlsm')) or raw_bytes[:2] == b'PK':
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes), data_only=True, read_only=True)
+        ws = wb['出数データ'] if '出数データ' in wb.sheetnames else wb.worksheets[0]
+        return _sales_rows(list(ws.iter_rows(values_only=True)))
     for enc in ('utf-8-sig', 'cp932'):
         try:
             content = raw_bytes.decode(enc)
@@ -399,25 +434,7 @@ def parse_sales_csv(raw_bytes):
             continue
     else:
         raise ValueError('文字コードを読み取れませんでした')
-    rows = list(csv.reader(io.StringIO(content)))
-    for h, header in enumerate(rows[:20]):
-        cols = [c.strip() for c in header]
-        pick = lambda names: next((cols.index(n) for n in names if n in cols), None)
-        ni, qi, ai = pick(_NAME_COLS), pick(_QTY_COLS), pick(_AMOUNT_COLS)
-        if ni is not None and qi is not None:
-            break
-    else:
-        raise ValueError('「商品名」と「数量」の列が見つかりませんでした')
-    out = []
-    for r in rows[h + 1:]:
-        if len(r) <= max(ni, qi) or not r[ni].strip():
-            continue
-        qty = _float(r[qi])
-        if qty is None:
-            continue
-        amt = _float(r[ai]) if ai is not None and ai < len(r) else 0
-        out.append((r[ni].strip(), int(qty), int(amt or 0)))
-    return out
+    return _sales_rows(list(csv.reader(io.StringIO(content))))
 
 
 @bp.route('/closing/<period>', methods=['GET', 'POST'])
@@ -429,7 +446,7 @@ def closing(period):
         if action == 'upload':
             file = request.files.get('sales_csv')
             try:
-                rows = parse_sales_csv(file.read()) if file else []
+                rows = parse_sales_file(file.read(), file.filename or '') if file else []
             except ValueError as e:
                 flash(str(e), 'danger')
                 return redirect(url_for('meat.closing', period=period))
