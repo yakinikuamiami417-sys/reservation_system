@@ -746,10 +746,20 @@ def valuation_prices(period):
             WHERE sl.slip_date < :end AND l.promised_unit_price IS NOT NULL
             ORDER BY sl.slip_date, l.id
         """), {'end': end}).all()
-    prices = {}
+    # 仕入の記録がまだ無い部位（使い始めの内臓など）は、在庫アプリの商品マスターの単価を使う
+    names = {p['id']: p['name'] for p in list_parts()}
+    prices = {pid: DEFAULT_UNIT_PRICES[n] for pid, n in names.items() if DEFAULT_UNIT_PRICES.get(n)}
     for r in rows:
         prices[r.part_id] = r.promised_unit_price
     return prices
+
+
+# 在庫アプリ（inventory_system/seed_kirinya_items.py）の単価（円/kg）。テールとアメリカ産ハラミは単価未登録
+DEFAULT_UNIT_PRICES = {
+    'センレバハツ': 3000, 'ホルモン': 3000, 'ハラミ（和牛）': 5100, 'タン（和牛）': 5100, 'ミノ': 3700,
+    'トリ': 1550, 'ウデモモ': 4200, 'トモバラ': 2100, 'クラシタ': 4200, 'タン（アメリカ産）': 5800,
+    'ヒレ': 11000, 'サーロイン': 7500, 'ブタ': 1600,
+}
 
 
 def get_count(period):
