@@ -1,0 +1,19 @@
+{% extends "meat/base.html" %}
+{% block title %}登録する人{% endblock %}
+{% block content %}
+<div class="card p-4 mt-4">
+  <h5 class="fw-bold mb-3"><i class="bi bi-lock"></i> 登録・修正をする</h5>
+  <p class="muted-small">在庫・単価・原価は誰でも見られます。登録や修正、月の締めをする時だけ入ってください。</p>
+  <form method="post">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label class="form-label fw-semibold">入力する人の名前</label>
+    <input name="staff" class="form-control form-control-lg mb-3" value="{{ meat_staff }}" required>
+    {% if need_pw %}
+    <label class="form-label fw-semibold">管理者パスワード</label>
+    <input type="password" name="pw" class="form-control form-control-lg mb-3" required>
+    {% endif %}
+    <button class="btn btn-danger w-100 fw-bold py-2">登録できるようにする</button>
+  </form>
+</div>
+{% endblock %}
+{% block bottom %}{% endblock %}

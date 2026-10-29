@@ -1,0 +1,139 @@
+{% extends "meat/base.html" %}
+{% block title %}{{ lot.part_name }} #{{ lot.id }}{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="{{ url_for('meat.index', tab='held' if lot.status == 'held' else 'house') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i></a>
+  <h5 class="mb-0 fw-bold">{{ lot.part_name }} <span class="muted-small">#{{ lot.id }}</span></h5>
+  <span class="badge badge-{{ lot.status }} ms-auto">{{ lot.status_label }}</span>
+</div>
+
+<div class="card p-3 mb-3">
+  <table class="table table-sm mb-0" style="font-size:.9rem">
+    <tr><th class="text-muted fw-normal" style="width:38%">ラベルの品名</th>
+        <td>{{ lot.label_item_name or '-' }}{% if lot.sub_part_name and lot.sub_part_name != lot.label_item_name %}（{{ lot.sub_part_name }}）{% endif %}</td></tr>
+    <tr><th class="text-muted fw-normal">業者 ／ 加工元</th><td>{{ lot.supplier_name }} ／ {{ lot.processor_name or '-' }}</td></tr>
+    <tr><th class="text-muted fw-normal">産地・銘柄</th><td>{{ lot.origin or '-' }} {{ lot.brand or '' }}</td></tr>
+    <tr><th class="text-muted fw-normal">個体識別番号</th><td class="num">{{ lot.individual_no or '-' }}</td></tr>
+    <tr><th class="text-muted fw-normal">枝番 ／ シリアル</th><td>{{ lot.branch_no or '-' }} ／ {{ lot.serial_no or '-' }}</td></tr>
+    <tr><th class="text-muted fw-normal">加工日</th><td>{{ lot.processed_date or '-' }}</td></tr>
+    <tr><th class="text-muted fw-normal">賞味期限</th>
+        <td class="{{ 'text-danger fw-bold' if lot.days_left is not none and lot.days_left <= 3 }}">{{ lot.best_before or '-' }}
+          {% if lot.days_left is not none %}（{{ 'あと%d日'|format(lot.days_left) if lot.days_left >= 0 else '%d日超過'|format(-lot.days_left) }}）{% endif %}</td></tr>
+    <tr><th class="text-muted fw-normal">重量 ／ 取引値</th><td class="num">{{ lot.label_kg or '-' }}kg ／ {{ lot.trade_kg or '-' }}kg</td></tr>
+    <tr><th class="text-muted fw-normal">単価 ／ 金額</th>
+        <td class="num">{{ '{:,}'.format(lot.promised_unit_price) if lot.promised_unit_price else '-' }}円/kg ／
+          {{ '{:,}'.format(lot.promised_amount) if lot.promised_amount else '-' }}円</td></tr>
+    <tr><th class="text-muted fw-normal">今の重量</th><td class="num fw-bold">{{ '%.2f'|format(lot.kg_now) }}kg</td></tr>
+    {% if lot.slip_no or lot.slip_date %}
+    <tr><th class="text-muted fw-normal">伝票</th><td>{{ lot.slip_date or '' }} {{ lot.slip_no or '' }}</td></tr>
+    {% endif %}
+  </table>
+  {% if lot.label_photo_id %}
+  <a href="{{ url_for('meat.photo', photo_id=lot.label_photo_id) }}" target="_blank" class="muted-small mt-2">
+    <i class="bi bi-image"></i> ラベルの写真を見る</a>
+  {% endif %}
+</div>
+
+{% if lot.individual_no %}
+<div class="card p-3 mb-3">
+  <div class="fw-semibold mb-2">個体情報</div>
+  {% if lot.cattle %}
+    <div style="font-size:.9rem">
+      {# 家畜改良センターで飼養者の氏名が公表されていない牛がある（都道府県だけ出る） #}
+      生産者（肥育）：{{ lot.cattle.producer_name or '（氏名の公表なし）' }} {{ lot.cattle.producer_place or '' }}<br>
+      出生地（繁殖）：{{ lot.cattle.breeder_name or '-' }} {{ lot.cattle.breeder_place or '' }}<br>
+      {{ lot.cattle.sex or '' }} {{ lot.cattle.breed or '' }}
+      {% if lot.cattle.age_months is not none %}・<b>月齢 {{ lot.cattle.age_months }}か月</b>{% endif %}
+      <span class="muted-small">（出生 {{ lot.cattle.birth_date or '-' }}／と畜 {{ lot.cattle.slaughter_date or '-' }}）</span>
+    </div>
+  {% elif meat_is_admin %}
+    <form method="post" action="{{ url_for('meat.lot_lookup', lot_id=lot.id) }}">
+      <button class="btn btn-outline-primary w-100"><i class="bi bi-search"></i> 家畜改良センターに照会する</button>
+    </form>
+  {% endif %}
+  <details class="mt-2">
+    <summary class="muted-small">{{ '個体情報を直す' if lot.cattle else '自動で取れない時は手で入れる' }}</summary>
+    <div class="alert alert-light border py-2 mt-2" style="font-size:.82rem">
+      ① 下のボタンで家畜改良センターの検索サービスを開き、番号 <b class="num">{{ lot.individual_no }}</b> で検索します。<br>
+      ② 結果をこの欄に写してください（月齢は自動で計算します）。
+      <div class="mt-2 d-flex gap-2">
+        <a href="{{ nlbc_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">検索サービスを開く</a>
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                onclick="navigator.clipboard.writeText('{{ lot.individual_no }}').then(() => this.textContent = 'コピーしました')">番号をコピー</button>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('meat.lot_cattle', lot_id=lot.id) }}" class="row g-2">
+      {% set c = lot.cattle or {} %}
+      <div class="col-6"><label class="muted-small">出生の年月日</label><input type="date" name="birth_date" class="form-control" value="{{ c.birth_date or '' }}"></div>
+      <div class="col-6"><label class="muted-small">と畜の年月日</label><input type="date" name="slaughter_date" class="form-control" value="{{ c.slaughter_date or '' }}"></div>
+      <div class="col-6"><label class="muted-small">雌雄</label>
+        <select name="sex" class="form-select">{% for v in ['', 'メス', '去勢', 'オス'] %}<option {{ 'selected' if c.sex == v }}>{{ v }}</option>{% endfor %}</select></div>
+      <div class="col-6"><label class="muted-small">種別（品種）</label><input name="breed" class="form-control" value="{{ c.breed or '黒毛和種' }}"></div>
+      <div class="col-7"><label class="muted-small">生産者（と畜前の飼養者）</label><input name="producer_name" class="form-control" value="{{ c.producer_name or '' }}"></div>
+      <div class="col-5"><label class="muted-small">所在地</label><input name="producer_place" class="form-control" value="{{ c.producer_place or '' }}"></div>
+      <div class="col-7"><label class="muted-small">出生地の飼養者（繁殖）</label><input name="breeder_name" class="form-control" value="{{ c.breeder_name or '' }}"></div>
+      <div class="col-5"><label class="muted-small">所在地</label><input name="breeder_place" class="form-control" value="{{ c.breeder_place or '' }}"></div>
+      <div class="col-12"><label class="muted-small">母牛の個体識別番号</label><input name="mother_no" class="form-control num" value="{{ c.mother_no or '' }}"></div>
+      <div class="col-12"><button class="btn btn-primary w-100">個体情報を保存</button></div>
+    </form>
+  </details>
+  {% if lot.siblings %}
+  <div class="muted-small mt-2">同じ牛の塊：
+    {% for s in lot.siblings %}<a href="{{ url_for('meat.lot_detail', lot_id=s.id) }}">{{ s.part_name }}（{{ s.label_item_name or '' }} {{ s.label_kg or '' }}kg）</a>{{ '、' if not loop.last }}{% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if meat_is_admin and lot.status in ('received', 'processed') %}
+<div class="card p-3 mb-3">
+  <div class="fw-semibold mb-2">{{ '捌き・商品化' if lot.status == 'received' else 'もう一度捌く（追加の商品化）' }}</div>
+  <form method="post" action="{{ url_for('meat.lot_process', lot_id=lot.id) }}" class="row g-2">
+    <div class="col-6"><label class="muted-small">捌く前 kg</label><input name="input_kg" class="form-control num" inputmode="decimal" value="{{ '%.2f'|format(lot.kg_now) }}"></div>
+    <div class="col-6"><label class="muted-small">商品になった kg</label><input name="product_kg" class="form-control num" inputmode="decimal" required></div>
+    <div class="col-6"><label class="muted-small">端材 kg（まかない等）</label><input name="trim_kg" class="form-control num" inputmode="decimal"></div>
+    <div class="col-6"><label class="muted-small">ロス kg（脂・筋）</label><input name="loss_kg" class="form-control num" inputmode="decimal"></div>
+    <div class="col-12"><input name="memo" class="form-control" placeholder="メモ（任意）"></div>
+    <div class="col-12"><button class="btn btn-success w-100 fw-bold">商品化を記録</button></div>
+  </form>
+</div>
+<div class="card p-3 mb-3">
+  <form method="post" action="{{ url_for('meat.lot_weigh', lot_id=lot.id) }}" class="d-flex gap-2">
+    <input name="kg" class="form-control num" inputmode="decimal" placeholder="今の重量 kg">
+    <button class="btn btn-outline-primary text-nowrap">計量を記録</button>
+  </form>
+  <form method="post" action="{{ url_for('meat.lot_consume', lot_id=lot.id) }}" class="mt-2"
+        onsubmit="return confirm('この塊を使い切りにしますか？')">
+    <button class="btn btn-outline-danger w-100">使い切り</button>
+  </form>
+</div>
+{% elif meat_is_admin and lot.status == 'held' %}
+<div class="card p-3 mb-3">
+  <a href="{{ url_for('meat.receive') }}" class="btn btn-primary w-100 fw-bold mb-2">納品（伝票の登録）へ</a>
+  <form method="post" action="{{ url_for('meat.lot_cancel', lot_id=lot.id) }}" onsubmit="return confirm('買付を取り消しますか？')">
+    <button class="btn btn-outline-danger w-100">買付を取り消す</button>
+  </form>
+</div>
+{% endif %}
+
+{% if lot.processing %}
+<div class="card p-3 mb-3">
+  <div class="fw-semibold mb-2">捌きの記録</div>
+  {% for pr in lot.processing %}
+  <div style="font-size:.88rem">{{ pr.processed_on }}　{{ pr.input_kg }}kg → 商品 {{ pr.product_kg }}kg
+    <b>（歩留まり {{ '%.0f'|format(pr.product_kg / pr.input_kg * 100) if pr.input_kg else '-' }}%）</b>
+    端材 {{ pr.trim_kg or 0 }}kg・ロス {{ pr.loss_kg or 0 }}kg <span class="muted-small">{{ pr.staff_name or '' }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card p-3 mb-3">
+  <div class="fw-semibold mb-2">履歴</div>
+  {% set names = {'promise': '目利き', 'receive': '納品', 'process': '捌き', 'weigh': '計量', 'consume': '使い切り', 'cancel': '取消', 'edit': '修正'} %}
+  {% for e in lot.events %}
+  <div style="font-size:.85rem">{{ e.logged_at[:16] }}　<b>{{ names.get(e.event_type, e.event_type) }}</b>
+    {% if e.kg is not none %}{{ e.kg }}kg{% endif %} {{ e.memo or '' }} <span class="muted-small">{{ e.staff_name or '' }}</span></div>
+  {% endfor %}
+</div>
+{% endblock %}

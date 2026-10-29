@@ -1,0 +1,92 @@
+{% extends "meat/base.html" %}
+{% block title %}{{ period_label(period) }} 棚卸{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-1">
+  <h5 class="fw-bold mb-0"><i class="bi bi-clipboard-check"></i> 棚卸</h5>
+  <span class="ms-auto muted-small">
+    {% if is_week %}<a href="{{ url_for('meat.count', period=period[:7]) }}">月末の棚卸へ</a>
+    {% else %}<a href="{{ url_for('meat.count', period=meat_week) }}">今週の棚卸へ</a>{% endif %}
+  </span>
+</div>
+<div class="fw-semibold mb-1">{{ period_label(period) }}{{ '（毎週月曜の閉店後）' if is_week else '（月末）' }}</div>
+<div class="muted-small mb-3">
+  {% if head and head.status == 'confirmed' %}<span class="badge bg-success">確定済み</span> {{ head.counted_at or '' }} {{ head.staff_name or '' }}
+  {% elif head %}<span class="badge bg-warning text-dark">入力中</span> {{ head.counted_at or '' }}
+  {% else %}冷蔵庫を歩く順に並んでいます。<b>未開封の箱はラベルの重さが入っているので、量るのは開けた箱と捌いた肉だけ</b>です。{% endif %}
+</div>
+{% if monthly_only %}
+<div class="alert alert-light border py-2" style="font-size:.82rem">
+  週次では金額の大きい部位だけを量ります。{{ monthly_only|join('・') }} は月末の棚卸だけで量ります。
+</div>
+{% endif %}
+
+{% set locked = head and head.status == 'confirmed' %}
+<form method="post">
+  {% set ns = namespace(part=None) %}
+  {% for lot in lots|sort(attribute='part_sort') %}
+    {% if lot.part_name != ns.part %}
+      {% set ns.part = lot.part_name %}
+      <div class="fw-bold mt-3 mb-1">{{ lot.part_name }}
+        <span class="muted-small">評価単価 {{ '{:,}'.format(prices.get(lot.part_id, 0) or 0) }}円/kg</span></div>
+    {% endif %}
+    {% set unopened = lot.status == 'received' %}
+    <div class="card p-2 px-3 mb-2 {{ '' if unopened else 'border border-primary' }}">
+      <div class="d-flex justify-content-between muted-small">
+        <span><span class="badge badge-{{ lot.status }}">{{ '未開封' if unopened else '開封済み・量る' }}</span>
+          {{ lot.sub_part_name or lot.label_item_name or '' }} #{{ lot.id }}</span>
+        <span>{{ 'ラベル' if unopened else '前回' }} {{ '%.2f'|format(lot.kg_now) }}kg</span>
+      </div>
+      {# 箱のラベルと見比べやすいよう、個体識別番号の下4桁を太字にする #}
+      <div class="num" style="font-size:.9rem">
+        {% if lot.individual_no %}{{ lot.individual_no[:-4] }}<b class="fs-6">{{ lot.individual_no[-4:] }}</b>
+        {% else %}<span class="text-muted">個体識別番号なし</span>{% endif %}
+        <span class="muted-small ms-1">{% if lot.best_before %}賞味 {{ lot.best_before[5:]|replace('-', '/') }}{% endif %}</span>
+      </div>
+      <div class="d-flex gap-2 align-items-center mt-1">
+        <input name="lot_{{ lot.id }}" class="form-control num" inputmode="decimal"
+               placeholder="{{ '' if unopened else '量った kg' }}"
+               value="{{ saved.get(lot.id, prefill.get(lot.id, '')) }}" {{ 'disabled' if locked }}>
+        <label class="text-nowrap muted-small"><input type="checkbox" name="lot_{{ lot.id }}_missing" value="1" {{ 'disabled' if locked }}> 無い</label>
+      </div>
+    </div>
+  {% else %}
+    <p class="text-muted">店内にある塊はありません。</p>
+  {% endfor %}
+
+  <div class="fw-bold mt-4 mb-1">一覧に無い分（捌いた肉を部位ごとにまとめて量った分・端材など）</div>
+  {% set extra_rows = extras + [{}, {}, {}] %}
+  <input type="hidden" name="extra_count" value="{{ extra_rows|length }}">
+  {% for e in extra_rows %}
+  <div class="d-flex gap-2 mb-2">
+    <select name="extra_{{ loop.index0 }}_part" class="form-select" {{ 'disabled' if locked }}>
+      <option value="">部位</option>
+      {% for p in parts %}<option value="{{ p.id }}" {{ 'selected' if e.part_id == p.id }}>{{ p.name }}</option>{% endfor %}
+    </select>
+    <select name="extra_{{ loop.index0 }}_state" class="form-select" style="max-width:7rem" {{ 'disabled' if locked }}>
+      <option value="product" {{ 'selected' if e.state != 'raw' }}>商品化</option>
+      <option value="raw" {{ 'selected' if e.state == 'raw' }}>原料</option>
+    </select>
+    <input name="extra_{{ loop.index0 }}_kg" class="form-control num" inputmode="decimal" placeholder="kg"
+           style="max-width:6rem" value="{{ e.kg or '' }}" {{ 'disabled' if locked }}>
+  </div>
+  {% endfor %}
+  <div class="muted-small mb-2">捌いた肉を部位ごとにまとめて量った時は、その塊の欄は空けたままで、ここに合計を入れてください。</div>
+
+  <div class="alert alert-light border mt-3" style="font-size:.82rem">
+    評価単価は、その部位の最後の仕入単価（最終仕入原価法）です。
+    商品化済みの評価方法（仕入単価のままか、歩留まりで割り戻すか）は税理士に確認中のため、今は仕入単価のままで計算しています。
+  </div>
+
+  {% if meat_is_admin %}
+    {% if locked %}
+      <button name="action" value="unlock" class="btn btn-outline-secondary w-100 mb-2">入力中に戻す</button>
+      <a href="{{ url_for('meat.closing', period=period) }}" class="btn btn-primary w-100 fw-bold">原価へ</a>
+    {% else %}
+      <button name="action" value="save" class="btn btn-outline-primary w-100 mb-2">一時保存</button>
+      <button name="action" value="confirm" class="btn btn-primary w-100 fw-bold"
+              onclick="return confirm('棚卸を確定しますか？「無い」にした塊は使い切りになります')">棚卸を確定する</button>
+    {% endif %}
+  {% endif %}
+</form>
+{% endblock %}
+{% block bottom %}{% endblock %}

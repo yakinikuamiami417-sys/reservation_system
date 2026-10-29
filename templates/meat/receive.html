@@ -1,0 +1,54 @@
+{% extends "meat/base.html" %}
+{% block title %}納品（伝票）{% endblock %}
+{% block content %}
+<h5 class="fw-bold mb-3"><i class="bi bi-truck"></i> 納品（仕入伝票の登録）</h5>
+
+{% if not groups %}
+  <p class="text-muted text-center py-4">業者預けの塊がありません。先に「目利き」で登録してください。</p>
+{% endif %}
+
+{% for (sid, sname), lots in groups.items() %}
+<form method="post" class="card p-3 mb-3">
+  <input type="hidden" name="supplier_id" value="{{ sid }}">
+  <div class="fw-bold mb-2">{{ sname }}</div>
+  <div class="row g-2 mb-2">
+    <div class="col-6"><label class="muted-small">伝票日付</label>
+      <input type="date" name="slip_date" class="form-control" value="{{ today.isoformat() }}" required></div>
+    <div class="col-6"><label class="muted-small">伝票番号</label><input name="slip_no" class="form-control"></div>
+    <div class="col-12"><label class="muted-small">伝票の合計金額（税抜・照合用）</label>
+      <input name="total_amount" class="form-control num" inputmode="numeric" placeholder="例 125,400"></div>
+  </div>
+  <div class="muted-small mb-1">届いた塊にチェック</div>
+  <div class="list-group mb-2">
+    {% for lot in lots %}
+    <label class="list-group-item d-flex gap-2 align-items-start">
+      <input class="form-check-input mt-1 lot-check" type="checkbox" name="lot_id" value="{{ lot.id }}"
+             data-amount="{{ lot.promised_amount or 0 }}">
+      <span class="flex-grow-1">
+        <span class="d-flex justify-content-between"><b>{{ lot.part_name }}</b>
+          <span class="num">{{ lot.label_kg or '-' }}kg（取引 {{ lot.trade_kg or '-' }}）</span></span>
+        <span class="muted-small d-flex justify-content-between">
+          <span>{{ lot.label_item_name or '' }} {{ lot.individual_no or '' }}</span>
+          <span>¥{{ '{:,}'.format(lot.promised_amount or 0) }}</span></span>
+      </span>
+    </label>
+    {% endfor %}
+  </div>
+  <div class="text-end fw-bold num mb-2 sel-total">選んだ塊の合計 0円</div>
+  <button class="btn btn-primary w-100 fw-bold">納品済みにする</button>
+</form>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('form.card').forEach(f => {
+  const upd = () => {
+    let t = 0;
+    f.querySelectorAll('.lot-check:checked').forEach(c => t += parseInt(c.dataset.amount || 0));
+    f.querySelector('.sel-total').textContent = `選んだ塊の合計 ${t.toLocaleString()}円`;
+  };
+  f.querySelectorAll('.lot-check').forEach(c => c.addEventListener('change', upd));
+});
+</script>
+{% endblock %}

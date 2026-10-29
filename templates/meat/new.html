@@ -1,0 +1,257 @@
+{% extends "meat/base.html" %}
+{% block title %}目利き（業者預け）{% endblock %}
+{% block content %}
+<h5 class="fw-bold mb-3"><i class="bi bi-camera"></i> 目利き（業者預け）</h5>
+
+<form method="post" id="lotForm">
+  <div class="card p-3 mb-3">
+    <label class="form-label fw-semibold mb-1">業者</label>
+    <input class="form-control form-control-lg" name="supplier_name" list="supplierList" required
+           value="{{ supplier }}" placeholder="フード・イシマル など">
+    <datalist id="supplierList">
+      {% for s in suppliers %}<option value="{{ s.name }}">{% endfor %}
+    </datalist>
+    <label class="form-label fw-semibold mt-2 mb-1">目利きの日</label>
+    <input type="date" class="form-control" name="promised_on" value="{{ today.isoformat() }}">
+  </div>
+
+  <div class="card p-3 mb-3">
+    <div class="fw-semibold mb-2">ラベルの写真</div>
+    {% if reader_ready %}
+      <label class="btn btn-warning btn-lg w-100 fw-bold">
+        <i class="bi bi-camera-fill"></i> ラベルを撮影して読み取る
+        <input type="file" accept="image/*" capture="environment" id="photoInput" hidden>
+      </label>
+      <div class="muted-small mt-2">真空パックの光の反射を避けて斜めから撮り、ラベル全体を枠に入れてください。
+        1枚に複数のラベルが写っていても読み取れます。</div>
+    {% else %}
+      <div class="alert alert-secondary py-2 mb-0" style="font-size:.85rem">
+        写真の読み取りは未設定です（Anthropic の API キーが必要）。下の欄に手入力して登録できます。</div>
+    {% endif %}
+    <div id="readStatus" class="mt-2"></div>
+    <img id="photoPreview" class="img-fluid rounded mt-2 d-none" alt="ラベル写真">
+  </div>
+
+  <input type="hidden" name="photo_id" id="photoId">
+  <input type="hidden" name="ocr_raw" id="ocrRaw">
+  <input type="hidden" name="piece_count" id="pieceCount" value="0">
+  <div id="pieces"></div>
+
+  <button type="button" class="btn btn-outline-secondary w-100" onclick="addManualPiece()">
+    <i class="bi bi-plus-lg"></i> 1本追加</button>
+  <div class="muted-small text-center mt-1 mb-3">個体識別番号・賞味期限・加工日は、前の塊と同じ値が入ります</div>
+
+  <div class="d-grid gap-2 mb-4">
+    <button type="submit" name="next_action" value="continue" class="btn btn-outline-primary btn-lg">登録して次の写真へ</button>
+    <button type="submit" name="next_action" value="done" class="btn btn-primary btn-lg fw-bold">登録する</button>
+  </div>
+</form>
+
+<template id="pieceTpl">
+  <div class="card p-3 mb-3 piece">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <span class="fw-bold piece-title">1本目</span>
+      <label class="muted-small"><input type="checkbox" data-f="skip" value="1"> 登録しない</label>
+    </div>
+    <div class="alert alert-warning py-1 px-2 mb-2 piece-warn d-none" style="font-size:.8rem"></div>
+    <!-- 手入力で入れるのはこの6項目（2026-10-28 社長と決定）。ほかは「その他」に畳む -->
+    <div class="row g-2">
+      <div class="col-6">
+        <label class="muted-small">部位</label>
+        <select class="form-select" data-f="part_id">
+          <option value="">選んでください</option>
+          {% for p in parts %}<option value="{{ p.id }}" data-price="{{ last_prices[p.id] or '' }}">{{ p.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-3">
+        <label class="muted-small">重量kg</label>
+        <input class="form-control num" inputmode="decimal" data-f="label_kg">
+      </div>
+      <div class="col-3">
+        <label class="muted-small">単価</label>
+        <input class="form-control num" inputmode="numeric" data-f="unit_price">
+      </div>
+      <div class="col-12 text-end num piece-amount muted-small">金額 -</div>
+      <div class="col-12">
+        <label class="muted-small">個体識別番号</label>
+        <input class="form-control num" inputmode="numeric" maxlength="13" data-f="individual_no">
+        <div class="cattle-info muted-small mt-1"></div>
+      </div>
+      <div class="col-6">
+        <label class="muted-small">賞味期限</label>
+        <input type="date" class="form-control" data-f="best_before">
+      </div>
+      <div class="col-6">
+        <label class="muted-small">加工日</label>
+        <input type="date" class="form-control" data-f="processed_date">
+      </div>
+    </div>
+    <details class="mt-2">
+      <summary class="muted-small">その他（取引値の修正・品名・枝番・加工元 など）</summary>
+      <div class="row g-2 mt-1">
+        <div class="col-6"><label class="muted-small">取引値kg（自動）</label><input class="form-control num" inputmode="decimal" data-f="trade_kg"></div>
+        <div class="col-6"><label class="muted-small">ラベルの品名</label><input class="form-control" data-f="label_item_name"></div>
+        <div class="col-6"><label class="muted-small">枝番</label><input class="form-control" data-f="branch_no"></div>
+        <div class="col-6"><label class="muted-small">シリアル・ロット</label><input class="form-control" data-f="serial_no"></div>
+        <div class="col-6"><label class="muted-small">と畜番号</label><input class="form-control" data-f="slaughter_no"></div>
+        <div class="col-6"><label class="muted-small">産地</label><input class="form-control" data-f="origin"></div>
+        <div class="col-6"><label class="muted-small">銘柄</label><input class="form-control" data-f="brand"></div>
+        <div class="col-12"><label class="muted-small">加工元</label><input class="form-control" data-f="processor_name"></div>
+        <input type="hidden" data-f="sub_part_name">
+      </div>
+    </details>
+  </div>
+</template>
+{% endblock %}
+
+{% block bottom %}{% endblock %}
+
+{% block scripts %}
+<script>
+const piecesEl = document.getElementById('pieces');
+let n = 0;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
+function addPiece(p) {
+  const node = document.getElementById('pieceTpl').content.firstElementChild.cloneNode(true);
+  const i = n++;
+  node.querySelector('.piece-title').textContent = (i + 1) + '本目';
+  node.querySelectorAll('[data-f]').forEach(el => {
+    const f = el.dataset.f;
+    el.name = `p${i}_${f}`;
+    if (p[f] !== undefined && p[f] !== null && f !== 'skip') el.value = p[f];
+    if (p.warnings && p.warnings[f]) { el.classList.add('warn-field'); el.title = p.warnings[f]; }
+  });
+  const warns = Object.values(p.warnings || {});
+  if (p.number_type === '荷口番号') warns.unshift('荷口番号のため家畜改良センターでは照会できません');
+  if (warns.length) {
+    const w = node.querySelector('.piece-warn');
+    w.innerHTML = [...new Set(warns)].map(t => '・' + esc(t)).join('<br>');
+    w.classList.remove('d-none');
+  }
+  const sel = node.querySelector('[data-f=part_id]');
+  const price = node.querySelector('[data-f=unit_price]');
+  if (!p.part_id && p.label_item_name) sel.classList.add('warn-field');
+  sel.addEventListener('change', () => {
+    sel.classList.remove('warn-field');
+    const opt = sel.selectedOptions[0];
+    if (!price.value && opt && opt.dataset.price) price.value = opt.dataset.price;
+    calc();
+  });
+  const calc = () => {
+    const t = parseFloat(node.querySelector('[data-f=trade_kg]').value);
+    const u = parseFloat(price.value);
+    node.querySelector('.piece-amount').innerHTML = (t && u)
+      ? `取引値 ${t.toFixed(1)}kg × ${u.toLocaleString()}円 ＝ <b class="fs-6 text-dark">${Math.round(t * u).toLocaleString()}円</b>`
+      : '金額 -';
+  };
+  node.querySelectorAll('[data-f=trade_kg],[data-f=unit_price]').forEach(el => el.addEventListener('input', calc));
+  // 重量を入れたら取引値（0.1kg未満切り捨て）を自動で入れる
+  node.querySelector('[data-f=label_kg]').addEventListener('input', e => {
+    const tk = node.querySelector('[data-f=trade_kg]');
+    const v = parseFloat(e.target.value);
+    if (v && !tk.dataset.touched) { tk.value = (Math.floor(v * 10 + 1e-9) / 10).toFixed(1); calc(); }
+  });
+  node.querySelector('[data-f=trade_kg]').addEventListener('input', e => e.target.dataset.touched = '1');
+  calc();
+  const noEl = node.querySelector('[data-f=individual_no]');
+  noEl.addEventListener('input', () => showCattle(node));
+  piecesEl.appendChild(node);
+  document.getElementById('pieceCount').value = n;
+  showCattle(node);
+  return node;
+}
+
+// 個体識別番号が10桁になったら家畜改良センターに照会し、生産者・月齢・と畜日をすぐ出す
+// （照会は1頭1回。同じ番号の2本目からは保存済みの値がすぐ出る）
+const cattleCache = {};
+async function showCattle(node) {
+  const box = node.querySelector('.cattle-info');
+  const no = node.querySelector('[data-f=individual_no]').value
+    .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/\D/g, '');
+  if (no.length !== 10) { box.textContent = ''; return; }
+  box.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 家畜改良センターに照会中…';
+  try {
+    // 照会中の番号は同じ照会を待つ（同じ牛の塊を続けて入れても照会は1回）
+    if (!cattleCache[no]) cattleCache[no] = fetch(`{{ url_for('meat.index') }}api/cattle/${no}`).then(r => r.json());
+    const c = await cattleCache[no];
+    if (c.error) {
+      delete cattleCache[no];
+      box.innerHTML = `<span class="text-danger">${esc(c.error)}</span>`;
+      return;
+    }
+    // 日付はラベルで目視できる加工日を使う（2026-10-28 社長と決定）。と畜日は塊の詳細画面にだけ残す
+    box.innerHTML = `<div class="alert alert-success py-1 px-2 mb-0">` +
+      `生産者 <b>${esc(c.producer_name || '（氏名の公表なし）')}</b>（${esc(c.producer_place || '')}）<br>` +
+      `${esc(c.sex || '')} ${esc(c.breed || '')}・<b>月齢 ${c.age_months ?? '-'}か月</b></div>`;
+  } catch (e) {
+    box.innerHTML = '<span class="text-danger">照会できませんでした（通信状態を確認してください）</span>';
+  }
+}
+
+// 手入力の「1本追加」：同じ箱・同じ牛の塊が続くことが多いので、
+// 前の塊の個体識別番号・賞味期限・加工日を最初から入れておく（変わるのは部位と重量だけのことが多い）
+function addManualPiece() {
+  const prev = piecesEl.lastElementChild;
+  const p = {};
+  if (prev) ['individual_no', 'best_before', 'processed_date'].forEach(f => {
+    p[f] = prev.querySelector(`[data-f=${f}]`).value;
+  });
+  const node = addPiece(p);
+  node.querySelector('[data-f=part_id]').focus();
+}
+
+// 写真を長辺1600pxのJPEGに縮めてから送る（通信量と保存容量を抑える）
+function resizeImage(file, maxSide = 1600) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+const input = document.getElementById('photoInput');
+if (input) input.addEventListener('change', async () => {
+  const file = input.files[0];
+  if (!file) return;
+  const status = document.getElementById('readStatus');
+  status.innerHTML = '<div class="spinner-border spinner-border-sm"></div> 読み取り中…（10〜30秒ほど）';
+  const dataUrl = await resizeImage(file);
+  const prev = document.getElementById('photoPreview');
+  prev.src = dataUrl; prev.classList.remove('d-none');
+  try {
+    const res = await fetch('{{ url_for("meat.api_read_label") }}', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({image: dataUrl})
+    });
+    const data = await res.json();
+    if (data.photo_id) document.getElementById('photoId').value = data.photo_id;
+    if (data.error) {
+      status.innerHTML = `<div class="alert alert-danger py-2">${esc(data.error)}</div>`;
+      if (!n) addPiece({});
+      return;
+    }
+    document.getElementById('ocrRaw').value = data.raw || '';
+    piecesEl.innerHTML = ''; n = 0;
+    data.pieces.forEach(addPiece);
+    const warnCount = data.pieces.filter(p => Object.keys(p.warnings || {}).length).length;
+    status.innerHTML = `<div class="alert alert-success py-2 mb-0">${data.pieces.length}本 読み取りました。` +
+      (warnCount ? `黄色の欄（${warnCount}本）を確認してください。` : '内容を確認して登録してください。') +
+      (data.notes ? `<br><span class="muted-small">${esc(data.notes)}</span>` : '') + '</div>';
+  } catch (e) {
+    status.innerHTML = '<div class="alert alert-danger py-2">読み取りに失敗しました。通信状態を確認してください。</div>';
+  }
+});
+
+document.getElementById('lotForm').addEventListener('submit', e => {
+  if (!n) { e.preventDefault(); alert('登録する塊がありません'); }
+});
+{% if not reader_ready %}addPiece({});{% endif %}
+</script>
+{% endblock %}

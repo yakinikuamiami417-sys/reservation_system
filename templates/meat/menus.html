@@ -1,0 +1,19 @@
+{% extends "meat/base.html" %}
+{% block title %}メニュー別グラム{% endblock %}
+{% block content %}
+<h5 class="fw-bold mb-3">メニュー別の部位とグラム数</h5>
+<p class="muted-small">出数×グラム数で、部位ごとの理論使用量と原価を出します（元データ：麒麟屋_メニュー別グラム表.xlsx）。</p>
+<div class="card">
+  <table class="table table-sm mb-0" style="font-size:.88rem">
+    <thead><tr><th>メニュー</th><th>部位</th><th class="text-end">g</th></tr></thead>
+    <tbody>
+    {% set ns = namespace(prev=None) %}
+    {% for r in rows %}
+      <tr><td>{{ r.menu_name if r.menu_name != ns.prev else '' }}</td><td>{{ r.part_name }}</td>
+          <td class="text-end num">{{ '%g'|format(r.grams_per_serving) }}</td></tr>
+      {% set ns.prev = r.menu_name %}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

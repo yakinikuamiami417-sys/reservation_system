@@ -55,6 +55,15 @@ try:
 except Exception as e:
     print(f"[WARN] DB初期化に失敗しました: {e}")
 
+# 正肉の仕入・在庫管理（/meat 以下）
+import meat
+from meat_db import init_meat_db
+app.register_blueprint(meat.bp)
+try:
+    init_meat_db()
+except Exception as e:
+    print(f"[WARN] 正肉在庫のDB初期化に失敗しました: {e}")
+
 @app.before_request
 def require_auth():
     # public_reserve / api_public_closure はお客様向け画面のためログイン不要
