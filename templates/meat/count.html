@@ -36,6 +36,12 @@
           {{ lot.sub_part_name or lot.label_item_name or '' }} #{{ lot.id }}</span>
         <span>{{ 'ラベル' if unopened else '前回' }} {{ '%.2f'|format(lot.kg_now) }}kg</span>
       </div>
+      {# 箱のラベルと見比べやすいよう、個体識別番号の下4桁を太字にする #}
+      <div class="num" style="font-size:.9rem">
+        {% if lot.individual_no %}{{ lot.individual_no[:-4] }}<b class="fs-6">{{ lot.individual_no[-4:] }}</b>
+        {% else %}<span class="text-muted">個体識別番号なし</span>{% endif %}
+        <span class="muted-small ms-1">{% if lot.best_before %}賞味 {{ lot.best_before[5:]|replace('-', '/') }}{% endif %}</span>
+      </div>
       <div class="d-flex gap-2 align-items-center mt-1">
         <input name="lot_{{ lot.id }}" class="form-control num" inputmode="decimal"
                placeholder="{{ '' if unopened else '量った kg' }}"
