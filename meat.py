@@ -27,6 +27,19 @@ def _this_period():
     return _today().strftime('%Y-%m')
 
 
+def _this_week():
+    """今週の締めの日（月曜）。毎週月曜の閉店後に棚卸をする（2026-10-29 決定）"""
+    return mdb.week_end(_today()).isoformat()
+
+
+def _valid_period(period):
+    try:
+        mdb.period_bounds(period)
+        return True
+    except ValueError:
+        return False
+
+
 def is_admin():
     # パスワード未設定（手元のパソコンで試す時）は誰でも登録できる。本番では必ず設定する
     return not MEAT_ADMIN_PASSWORD or session.get('meat_admin')
@@ -50,7 +63,8 @@ def admin_required(f):
 
 @bp.app_context_processor
 def _ctx():
-    return {'meat_is_admin': is_admin(), 'meat_staff': staff_name(), 'meat_period': _this_period()}
+    return {'meat_is_admin': is_admin(), 'meat_staff': staff_name(), 'meat_period': _this_period(),
+            'meat_week': _this_week(), 'period_label': mdb.period_label}
 
 
 def lookup_cattle(individual_nos):
@@ -335,7 +349,7 @@ def lot_cattle(lot_id):
 
 
 # ============================================================
-# ④ 月末棚卸
+# ④ 棚卸（毎週月曜の閉店後。月末にも1回）
 # ============================================================
 @bp.route('/count/<period>', methods=['GET', 'POST'])
 def count(period):
@@ -367,6 +381,17 @@ def count(period):
             if pid and kg:
                 lines.append({'part_id': int(pid), 'lot_id': None, 'kg': kg, 'state': f.get(f'extra_{i}_state', 'raw')})
         confirm = f.get('action') == 'confirm'
+        if confirm:
+            # 開けた塊を量り忘れると、残りが0kgとして数えられて原価が高く出る。確定の前に止める
+            counted_parts = {ln['part_id'] for ln in lines}
+            forgot = [f'{l["part_name"]} #{l["id"]}' for l in mdb.list_lots(('processed',))
+                      if l['id'] not in missing and l['part_id'] not in counted_parts
+                      and f'lot_{l["id"]}' in f]
+            if forgot:
+                mdb.save_count(period, lines, staff_name())
+                flash('開けた塊の重さが入っていません：' + '、'.join(forgot) +
+                      '。量って入れるか、使い切っていれば「無い」にしてください（一時保存しました）', 'warning')
+                return redirect(url_for('meat.count', period=period))
         try:
             mdb.save_count(period, lines, staff_name(), confirm=confirm, missing_lot_ids=missing if confirm else ())
         except ValueError as e:
@@ -374,11 +399,20 @@ def count(period):
             return redirect(url_for('meat.count', period=period))
         flash('棚卸を確定しました' if confirm else '棚卸を一時保存しました', 'success')
         return redirect(url_for('meat.closing', period=period) if confirm else url_for('meat.count', period=period))
+    if not _valid_period(period):
+        abort(404)
     saved = {ln['lot_id']: ln['kg'] for ln in (head['lines'] if head else []) if ln['lot_id']}
     extras = [ln for ln in (head['lines'] if head else []) if not ln['lot_id']]
-    return render_template('meat/count.html', period=period, head=head, lots=mdb.list_lots(mdb.IN_HOUSE),
-                           saved=saved, extras=extras, parts=mdb.list_parts(),
-                           prices=mdb.valuation_prices(period))
+    parts = mdb.list_parts()
+    week = mdb.is_week(period)
+    weekly_ids = {p['id'] for p in parts if p.get('count_weekly', 1)}
+    lots = [l for l in mdb.list_lots(mdb.IN_HOUSE) if not week or l['part_id'] in weekly_ids]
+    # 未開封の箱（納品済みのまま）は量らなくてよいので、ラベルの重さを最初から入れておく
+    prefill = {l['id']: round(l['kg_now'], 2) for l in lots if l['status'] == 'received'}
+    return render_template('meat/count.html', period=period, head=head, lots=lots, saved=saved, prefill=prefill,
+                           extras=extras, parts=[p for p in parts if not week or p['id'] in weekly_ids],
+                           monthly_only=[p['name'] for p in parts if p['id'] not in weekly_ids] if week else [],
+                           is_week=week, prices=mdb.valuation_prices(period))
 
 
 # ============================================================
@@ -462,16 +496,19 @@ def closing(period):
         elif action == 'confirm':
             try:
                 mdb.confirm_closing(period, staff_name())
-                flash(f'{period} を締めました', 'success')
+                flash(f'{mdb.period_label(period)} を締めました', 'success')
             except ValueError as e:
                 flash(str(e), 'danger')
         return redirect(url_for('meat.closing', period=period))
+    if not _valid_period(period):
+        abort(404)
     result = mdb.compute_closing(period)
     prev = mdb.compute_closing(mdb.prev_period(period))
     prev_cost = {r['part_id']: r['cost_per_sale'] for r in prev['rows']}
     prev_loss = {r['part_id']: r['loss_rate'] for r in prev['rows']}
     prev_menu = {m['menu_name']: m['cost'] for m in prev['menus'] if m['complete'] and m['cost']}
     return render_template('meat/closing.html', r=result, period=period, prev_period=mdb.prev_period(period),
+                           next_period=mdb.next_period(period), is_week=mdb.is_week(period),
                            prev_cost=prev_cost, prev_loss=prev_loss, prev_menu=prev_menu)
 
 

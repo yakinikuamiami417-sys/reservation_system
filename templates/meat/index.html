@@ -72,7 +72,7 @@
           <div class="d-flex justify-content-between">
             <span><span class="badge badge-{{ lot.status }}">{{ lot.status_label }}</span>
               {{ lot.sub_part_name or lot.label_item_name or '' }}</span>
-            <span class="num">{{ '%.2f'|format(lot.kg_now) }}kg</span>
+            <span class="num">{{ '%.2f'|format(lot.kg_now) }}kg{% if lot.status == 'processed' %}<span class="muted-small">（開封済み・前回の計量）</span>{% endif %}</span>
           </div>
           <div class="muted-small d-flex justify-content-between">
             <span>{{ lot.supplier_name }}{% if lot.brand %}・{{ lot.brand }}{% endif %}</span>

@@ -31,7 +31,7 @@
   <a href="/" title="予約管理へ"><i class="bi bi-house"></i></a>
   <a class="brand" href="{{ url_for('meat.index') }}">正肉在庫</a>
   <div class="ms-auto d-flex align-items-center gap-2" style="font-size:.8rem">
-    <a href="{{ url_for('meat.closing', period=meat_period) }}"><i class="bi bi-graph-up"></i> 原価</a>
+    <a href="{{ url_for('meat.closing', period=meat_week) }}"><i class="bi bi-graph-up"></i> 原価</a>
     {% if meat_is_admin %}
       <span><i class="bi bi-pencil-square"></i> {{ meat_staff or '登録可' }}</span>
       <a href="{{ url_for('meat.lock') }}" class="btn btn-sm btn-outline-light py-0">終了</a>
@@ -57,7 +57,7 @@
 <nav class="bottom-bar">
   <a href="{{ url_for('meat.new_lots') }}" class="btn btn-warning"><i class="bi bi-camera"></i> 目利き</a>
   <a href="{{ url_for('meat.receive') }}" class="btn btn-primary"><i class="bi bi-truck"></i> 納品</a>
-  <a href="{{ url_for('meat.count', period=meat_period) }}" class="btn btn-outline-dark">
+  <a href="{{ url_for('meat.count', period=meat_week) }}" class="btn btn-outline-dark">
     <i class="bi bi-clipboard-check"></i> 棚卸</a>
 </nav>
 {% endblock %}

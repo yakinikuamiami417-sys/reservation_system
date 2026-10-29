@@ -250,6 +250,23 @@ def init_meat_db():
         con.execute(text('CREATE INDEX IF NOT EXISTS idx_meat_lots_part ON meat_lots(part_id)'))
         con.execute(text('CREATE INDEX IF NOT EXISTS idx_meat_events_lot ON meat_lot_events(lot_id)'))
     _seed()
+    _add_weekly_column()
+
+
+# 週次の棚卸で量る部位（金額の大きい部位）。それ以外は月末だけ量る（2026-10-29 決定）
+MONTHLY_ONLY_PARTS = ('ホルモン', 'ミノ', 'センレバハツ', 'テール', 'トリ', 'ブタ')
+
+
+def _add_weekly_column():
+    """meat_parts に count_weekly（1＝毎週量る）を足す。足した時だけ初期値を入れる"""
+    try:
+        with engine.begin() as con:
+            con.execute(text('ALTER TABLE meat_parts ADD COLUMN count_weekly INTEGER NOT NULL DEFAULT 1'))
+    except Exception:
+        return   # 既にある
+    with engine.begin() as con:
+        for name in MONTHLY_ONLY_PARTS:
+            con.execute(text('UPDATE meat_parts SET count_weekly = 0 WHERE name = :n'), {'n': name})
 
 
 def _seed():
@@ -664,8 +681,22 @@ def save_cattle(individual_no, d, raw=None):
 # ============================================================
 # ④ 棚卸・月次原価
 # ============================================================
+# 期間は2種類：月次 '2026-10'、週次 '2026-11-02'（棚卸をする月曜の日付。火〜月の1週間）
+# 2026-10-29 決定：毎週月曜（閉店後）に棚卸。火曜は定休日なので在庫は動かない
+def is_week(period):
+    return len(period) == 10
+
+
+def week_end(d):
+    """その日を含む週の月曜（＝棚卸の日）"""
+    return d + timedelta(days=(0 - d.weekday()) % 7)
+
+
 def period_bounds(period):
-    """'2026-10' → ('2026-10-01', '2026-11-01')"""
+    """'2026-10' → ('2026-10-01', '2026-11-01')、'2026-11-02' → ('2026-10-27', '2026-11-03')"""
+    if is_week(period):
+        mon = date.fromisoformat(period)
+        return (mon - timedelta(days=6)).isoformat(), (mon + timedelta(days=1)).isoformat()
     y, m = map(int, period.split('-'))
     start = date(y, m, 1)
     end = date(y + (m == 12), m % 12 + 1, 1)
@@ -673,8 +704,36 @@ def period_bounds(period):
 
 
 def prev_period(period):
+    if is_week(period):
+        return (date.fromisoformat(period) - timedelta(days=7)).isoformat()
     y, m = map(int, period.split('-'))
     return f'{y - (m == 1)}-{(m - 2) % 12 + 1:02d}'
+
+
+def next_period(period):
+    if is_week(period):
+        return (date.fromisoformat(period) + timedelta(days=7)).isoformat()
+    y, m = map(int, period.split('-'))
+    return f'{y + (m == 12)}-{m % 12 + 1:02d}'
+
+
+def period_label(period):
+    if is_week(period):
+        s, e = period_bounds(period)
+        f = lambda d: f'{d.month}/{d.day}'
+        return f'{f(date.fromisoformat(s))}(火)〜{f(date.fromisoformat(period))}(月)の週'
+    y, m = period.split('-')
+    return f'{y}年{int(m)}月'
+
+
+def _same_day_period(period):
+    """同じ日の棚卸を、月次と週次で共有する（例：11/30 は月曜で月末。1回量れば両方に使う）"""
+    if is_week(period):
+        mon = date.fromisoformat(period)
+        return mon.strftime('%Y-%m') if (mon + timedelta(days=1)).day == 1 else None
+    _, end = period_bounds(period)
+    last = date.fromisoformat(end) - timedelta(days=1)
+    return last.isoformat() if last.weekday() == 0 else None
 
 
 def valuation_prices(period):
@@ -756,6 +815,8 @@ def unlock_count(period):
 def _count_totals(period, confirmed_only=True):
     """棚卸の部位別合計 {part_id: (kg, amount)}。無ければ None"""
     head = get_count(period)
+    if not head and _same_day_period(period):
+        head = get_count(_same_day_period(period))
     if not head or (confirmed_only and head['status'] != 'confirmed'):
         return None
     totals = {}
@@ -858,6 +919,8 @@ def compute_closing(period):
         purchases = purchases_in_period(period)
         rows = []
         for p in list_parts():
+            if is_week(period) and not p.get('count_weekly', 1):
+                continue   # 月末だけ量る部位は、週次の原価には出さない
             pid = p['id']
             ok, oa = opening.get(pid, (0.0, 0))
             pk, pa = purchases.get(pid, (0.0, 0))
@@ -903,7 +966,7 @@ def compute_closing(period):
 def confirm_closing(period, staff):
     """月を締める：計算結果を保存してロックする。棚卸の確定が前提"""
     if _count_totals(period) is None:
-        raise ValueError('先に今月の棚卸を確定してください')
+        raise ValueError('先にこの期間の棚卸を確定してください')
     result = compute_closing(period)
     if result['status']['closed']:
         raise ValueError(f'{period} は締め済みです')

@@ -154,13 +154,43 @@ except ValueError:
 check(mdb.compute_closing('2026-11')['rows'][0]['opening_amount'] in (8400, 10500),
       '翌月の前繰＝10月の確定棚卸')
 
+# ---- 週次決算（毎週月曜の閉店後に棚卸。火〜月の1週間） ----
+check(mdb.period_bounds('2026-11-02') == ('2026-10-27', '2026-11-03'), '11/2(月)の週＝10/27(火)〜11/2(月)')
+check(mdb.week_end(date(2026, 10, 29)) == date(2026, 11, 2) and mdb.week_end(date(2026, 11, 2)) == date(2026, 11, 2),
+      '木曜→次の月曜、月曜→その日')
+check(mdb.prev_period('2026-11-02') == '2026-10-26' and mdb.next_period('2026-11-02') == '2026-11-09', '前後の週')
+check(mdb.period_label('2026-11-02') == '10/27(火)〜11/2(月)の週', f'週の名前 {mdb.period_label("2026-11-02")}')
+check(mdb._same_day_period('2026-11-30') == '2026-11' and mdb._same_day_period('2026-11') == '2026-11-30'
+      and mdb._same_day_period('2026-11-09') is None, '11/30は月曜で月末：週次と月次で同じ棚卸を使う')
+weekly = {p['name']: p['count_weekly'] for p in mdb.list_parts()}
+check(weekly['ウデモモ'] == 1 and weekly['ホルモン'] == 0 and weekly['トリ'] == 0, '毎週量る部位と月末だけの部位')
+
+# 11/30(月)の週の棚卸を1回すれば、11月の月次の期末にもなる
+mdb.save_count('2026-11-30', [{'part_id': parts['トモバラ'], 'lot_id': None, 'kg': 1.0, 'state': 'raw'}], '社長',
+               confirm=True)
+check(mdb._count_totals('2026-11') == {parts['トモバラ']: (1.0, 2100)}, '月末の月曜の棚卸が月次にも使われる')
+wk = mdb.compute_closing('2026-11-30')
+check(all(r['part_name'] not in ('ホルモン', 'トリ') for r in wk['rows']), '週次の原価には月末だけの部位を出さない')
+
 # ---- 画面（テンプレートが壊れていないか） ----
 client = app.test_client()
 for path in ['/meat/', '/meat/?tab=held', f'/meat/lot/{a}', f'/meat/lot/{c}', '/meat/new', '/meat/receive',
              '/meat/count/2026-10', '/meat/count/2026-11', '/meat/closing/2026-10', '/meat/closing/2026-11',
+             '/meat/count/2026-11-09', '/meat/closing/2026-11-30', '/meat/closing/2026-11-09',
              '/meat/menus', '/meat/unlock']:
     res = client.get(path)
     check(res.status_code == 200, f'GET {path} → {res.status_code}')
+check(client.get('/meat/count/2026-13').status_code == 404, 'あり得ない期間は404')
+page = client.get('/meat/count/2026-11-09').get_data(as_text=True)
+check('ホルモン は月末' not in page and '月末の棚卸だけで量ります' in page, '週次の棚卸は月末だけの部位を案内')
+
+# 開けた塊を量り忘れたまま確定しようとすると止める
+lot_open = mdb.get_lot(a)
+check(lot_open['status'] == 'processed', '（前提）ウデモモ #a は開封済み')
+res = client.post('/meat/count/2026-11-09', data={'action': 'confirm', f'lot_{a}': '', 'extra_count': '0'})
+check(res.status_code == 302 and mdb.get_count('2026-11-09')['status'] == 'draft', '開けた塊の重さが無いと確定しない')
+res = client.post('/meat/count/2026-11-09', data={'action': 'confirm', f'lot_{a}': '1.5', 'extra_count': '0'})
+check(mdb.get_count('2026-11-09')['status'] == 'confirmed', '量って入れれば確定できる')
 res = client.post('/meat/api/read-label', json={'image': 'data:image/jpeg;base64,AAAA'})
 check(res.status_code == 200 and '未設定' in res.get_json().get('error', ''), '写真読み取り（キー未設定）は案内を返す')
 res = client.post('/meat/new', data={'supplier_name': 'イシマル', 'piece_count': '1', 'p0_part_id': str(parts['ミノ']),

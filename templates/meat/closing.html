@@ -1,24 +1,33 @@
 {% extends "meat/base.html" %}
-{% block title %}{{ period }} 原価{% endblock %}
+{% block title %}{{ period_label(period) }} 原価{% endblock %}
 {% block content %}
+{% set unit = '週' if is_week else '月' %}
+<ul class="nav nav-pills mb-2" style="font-size:.85rem">
+  <li class="nav-item"><a class="nav-link {{ 'active' if is_week }}" href="{{ url_for('meat.closing', period=meat_week) }}">週次</a></li>
+  <li class="nav-item"><a class="nav-link {{ '' if is_week else 'active' }}" href="{{ url_for('meat.closing', period=meat_period) }}">月次</a></li>
+</ul>
 <div class="d-flex align-items-center gap-2 mb-2">
   <a href="{{ url_for('meat.closing', period=prev_period) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-left"></i></a>
-  <h5 class="fw-bold mb-0">{{ period }} の原価</h5>
+  <h5 class="fw-bold mb-0">{{ period_label(period) }} の原価</h5>
+  <a href="{{ url_for('meat.closing', period=next_period) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-right"></i></a>
   {% if r.status.closed %}<span class="badge bg-success">確定済み</span>{% else %}<span class="badge bg-secondary">計算中</span>{% endif %}
 </div>
+{% if is_week %}
+<div class="muted-small mb-2">週次は経営判断のための速報です。ホルモン・ミノ・センレバハツ・テール・トリ・ブタは月末だけ量るので、月次で見てください。</div>
+{% endif %}
 
 {% if not r.status.closed %}
 <div class="card p-3 mb-3" style="font-size:.88rem">
   <div class="fw-semibold mb-1">締めまでの手順</div>
-  <div>{{ '✅' if r.status.opening_available else '⬜' }} 前月（{{ prev_period }}）の棚卸＝前繰
-    {% if not r.status.opening_available %}<span class="text-muted">…無い場合は前繰0で計算します（使い始めの月）</span>{% endif %}</div>
-  <div>{{ '✅' if r.status.count_confirmed else '⬜' }} 今月の棚卸を確定
+  <div>{{ '✅' if r.status.opening_available else '⬜' }} 前の{{ unit }}（{{ period_label(prev_period) }}）の棚卸＝前繰
+    {% if not r.status.opening_available %}<span class="text-muted">…無い場合は前繰0で計算します（使い始め）</span>{% endif %}</div>
+  <div>{{ '✅' if r.status.count_confirmed else '⬜' }} この{{ unit }}の棚卸を確定
     <a href="{{ url_for('meat.count', period=period) }}">棚卸へ</a></div>
-  <div>{{ '✅' if r.status.has_sales else '⬜' }} 出数（マジレジの商品別売上）を取り込む</div>
+  <div>{{ '✅' if r.status.has_sales else '⬜' }} 出数を取り込む（マジレジのメニュー別累計。日付を{{ period_label(period) }}にして出す）</div>
 </div>
 {% endif %}
 
-<!-- 社員向け：1人前の原価と先月比 -->
+<!-- 社員向け：1人前の原価と前の期間との比較 -->
 <h6 class="fw-bold mt-3">1人前の肉の原価（出数が多い順）</h6>
 {% for m in r.menus if m.qty %}
   {% if loop.index <= 12 %}
@@ -32,7 +41,7 @@
       {% set pv = prev_menu.get(m.menu_name) %}
       {% if pv and m.complete %}
         {% set d = (m.cost - pv)|round|int %}
-        <span class="{{ 'text-success' if d < 0 else 'text-danger' if d > 0 }}">先月 {{ '{:,}'.format(pv|round|int) }}円
+        <span class="{{ 'text-success' if d < 0 else 'text-danger' if d > 0 }}">前{{ unit }} {{ '{:,}'.format(pv|round|int) }}円
           {{ '▼%d'|format(-d) if d < 0 else '▲%d'|format(d) if d > 0 else '±0' }}</span>
       {% endif %}
     </div>
@@ -59,12 +68,12 @@
         <td class="text-end">{{ '%g'|format(row.sales_qty) }}</td>
         <td class="text-end fw-bold">{{ '{:,}'.format(row.cost_per_sale) if row.cost_per_sale is not none else '-' }}
           {% set pc = prev_cost.get(row.part_id) %}
-          {% if pc and row.cost_per_sale is not none %}<br><span class="text-muted">先月 {{ '{:,}'.format(pc) }}</span>{% endif %}</td>
+          {% if pc and row.cost_per_sale is not none %}<br><span class="text-muted">前{{ unit }} {{ '{:,}'.format(pc) }}</span>{% endif %}</td>
         <td class="text-end">
           {% if row.loss_rate is not none %}{{ '%.1f'|format(row.loss_rate * 100) }}%
             <br><span class="text-muted">理論 {{ '%.1f'|format(row.theoretical_kg) }}kg</span>{% else %}-{% endif %}
           {% set pl = prev_loss.get(row.part_id) %}
-          {% if pl is not none and row.loss_rate is not none %}<br><span class="text-muted">先月 {{ '%.1f'|format(pl * 100) }}%</span>{% endif %}
+          {% if pl is not none and row.loss_rate is not none %}<br><span class="text-muted">前{{ unit }} {{ '%.1f'|format(pl * 100) }}%</span>{% endif %}
         </td>
       </tr>
     {% else %}
@@ -119,9 +128,9 @@
   </details>
 </div>
 
-<form method="post" onsubmit="return confirm('{{ period }} を締めますか？締めた後は数字が変わらなくなります')">
+<form method="post" onsubmit="return confirm('{{ period_label(period) }} を締めますか？締めた後は数字が変わらなくなります')">
   <input type="hidden" name="action" value="confirm">
-  <button class="btn btn-danger w-100 fw-bold" {{ 'disabled' if not r.status.count_confirmed }}>この月を締める</button>
+  <button class="btn btn-danger w-100 fw-bold" {{ 'disabled' if not r.status.count_confirmed }}>この{{ unit }}を締める</button>
 </form>
 {% endif %}
 {% endblock %}
