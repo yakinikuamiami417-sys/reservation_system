@@ -166,8 +166,8 @@ weekly = {p['name']: p['count_weekly'] for p in mdb.list_parts()}
 check(weekly['ウデモモ'] == 1 and weekly['ホルモン'] == 0 and weekly['トリ'] == 0, '毎週量る部位と月末だけの部位')
 
 vp = mdb.valuation_prices('2026-10')
-check(vp[parts['ミノ']] == 3700 and vp[parts['ウデモモ']] == 4200 and parts['テール'] not in vp,
-      '仕入の記録が無い部位は在庫アプリの単価で評価（テールは単価未登録）')
+check(vp[parts['ミノ']] == 3700 and vp[parts['ウデモモ']] == 4200 and vp[parts['テール']] == 2000,
+      '仕入の記録が無い部位は在庫アプリの単価で評価（テールは2,000円）')
 
 # 11/30(月)の週の棚卸を1回すれば、11月の月次の期末にもなる
 mdb.save_count('2026-11-30', [{'part_id': parts['トモバラ'], 'lot_id': None, 'kg': 1.0, 'state': 'raw'}], '社長',
