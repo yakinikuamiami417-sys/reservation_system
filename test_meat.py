@@ -80,7 +80,7 @@ check(mdb.resolve_alias('牛カッパ') == (parts['トモバラ'], 'カッパ'),
 check(mdb.resolve_alias('ネクタイ') == (None, None), '知らない品名は部位なし')
 mdb.learn_alias('ネクタイ', '東和食品', parts['クラシタ'])
 check(mdb.resolve_alias('ネクタイ', '東和食品')[0] == parts['クラシタ'], '人が選んだ部位を覚える')
-check(len(mdb.list_menu_map()) == 94, 'グラム表（80行＋ランチ・鶏豚・地鶏盛りの14行）を初期データに取り込み')
+check(len(mdb.list_menu_map()) == 93, 'グラム表（93行）を初期データに取り込み')
 check(mdb.match_menu('特選カルビ（ヘッドバラ）タレ', ['特選カルビ（ヘッドバラ）', 'ロース']) == ('特選カルビ（ヘッドバラ）', 1),
       'マジレジの「タレ」付き商品名をメニューに突き合わせ')
 check(mdb.match_menu('特選ロース', ['特選ロース', 'ロース']) == ('特選ロース', 1), '最長一致（ロース と 特選ロース）')
