@@ -353,6 +353,16 @@ def last_unit_price(part_id):
         """), {'p': part_id}).scalar()
 
 
+def set_menu_parts(menu_name, parts_grams):
+    """メニューの部位とグラム数を入れ替える。parts_grams: {部位名: g}"""
+    ids = {p['name']: p['id'] for p in list_parts()}
+    with engine.begin() as con:
+        con.execute(text('DELETE FROM meat_menu_map WHERE menu_name = :m'), {'m': menu_name})
+        for part, g in parts_grams.items():
+            con.execute(text('INSERT INTO meat_menu_map (menu_name, part_id, grams_per_serving) VALUES (:m, :p, :g)'),
+                        {'m': menu_name, 'p': ids[part], 'g': g})
+
+
 def list_menu_map():
     with engine.begin() as con:
         return [dict(r) for r in con.execute(text("""

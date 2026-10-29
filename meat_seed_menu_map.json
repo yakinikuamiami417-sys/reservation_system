@@ -398,5 +398,65 @@
   "menu_name": "とろっテールっぽん",
   "part": "テール",
   "grams": 80
+ },
+ {
+  "menu_name": "黄金ランチ",
+  "part": "ブタ",
+  "grams": 50
+ },
+ {
+  "menu_name": "黄金ランチ",
+  "part": "トリ",
+  "grams": 50
+ },
+ {
+  "menu_name": "黄金ランチ",
+  "part": "ウデモモ",
+  "grams": 50
+ },
+ {
+  "menu_name": "黄金和牛",
+  "part": "トモバラ",
+  "grams": 50
+ },
+ {
+  "menu_name": "黄金和牛",
+  "part": "ウデモモ",
+  "grams": 50
+ },
+ {
+  "menu_name": "黄金和牛",
+  "part": "ホルモン",
+  "grams": 50
+ },
+ {
+  "menu_name": "黄金希少",
+  "part": "サーロイン",
+  "grams": 50
+ },
+ {
+  "menu_name": "黄金希少",
+  "part": "ウデモモ",
+  "grams": 100
+ },
+ {
+  "menu_name": "久留米さざなみ雌鶏",
+  "part": "トリ",
+  "grams": 90
+ },
+ {
+  "menu_name": "九州産豚カルビ",
+  "part": "ブタ",
+  "grams": 90
+ },
+ {
+  "menu_name": "さざなみ雌鶏のササミ月見",
+  "part": "トリ",
+  "grams": 80
+ },
+ {
+  "menu_name": "さざなみ雌鶏のセセリとハラミ",
+  "part": "トリ",
+  "grams": 70
  }
 ]
