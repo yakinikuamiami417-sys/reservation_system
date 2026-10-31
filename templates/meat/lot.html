@@ -107,6 +107,13 @@
         onsubmit="return confirm('この塊を使い切りにしますか？')">
     <button class="btn btn-outline-danger w-100">使い切り</button>
   </form>
+  {% if lot.status == 'received' %}
+  <form method="post" action="{{ url_for('meat.lot_unreceive', lot_id=lot.id) }}" class="mt-2"
+        onsubmit="return confirm('誤って納品にした塊を「業者預け」に戻しますか？')">
+    <input name="memo" class="form-control form-control-sm mb-1" placeholder="理由（任意）例：まだ届いていない">
+    <button class="btn btn-outline-secondary w-100">納品を取り消す（業者預けに戻す）</button>
+  </form>
+  {% endif %}
 </div>
 {% elif meat_is_admin and lot.status == 'held' %}
 <div class="card p-3 mb-3">
@@ -130,7 +137,7 @@
 
 <div class="card p-3 mb-3">
   <div class="fw-semibold mb-2">履歴</div>
-  {% set names = {'promise': '目利き', 'receive': '納品', 'process': '捌き', 'weigh': '計量', 'consume': '使い切り', 'cancel': '取消', 'edit': '修正'} %}
+  {% set names = {'promise': '目利き', 'receive': '納品', 'process': '捌き', 'weigh': '計量', 'consume': '使い切り', 'cancel': '取消', 'unreceive': '納品取消', 'edit': '修正'} %}
   {% for e in lot.events %}
   <div style="font-size:.85rem">{{ e.logged_at[:16] }}　<b>{{ names.get(e.event_type, e.event_type) }}</b>
     {% if e.kg is not none %}{{ e.kg }}kg{% endif %} {{ e.memo or '' }} <span class="muted-small">{{ e.staff_name or '' }}</span></div>

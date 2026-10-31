@@ -617,6 +617,34 @@ def receive_lots(supplier_id, slip_no, slip_date, total_amount, lot_ids, staff, 
     return slip_id, lines_total
 
 
+def unreceive_lot(lot_id, staff, memo=''):
+    """納品の取り消し：誤って納品にした塊を「業者預け」に戻す。
+    捌き前（納品済みのまま）で、確定済みの棚卸に入っていない塊だけ戻せる。"""
+    with engine.begin() as con:
+        lot = con.execute(text('SELECT status, slip_id, received_on FROM meat_lots WHERE id = :id'),
+                          {'id': lot_id}).first()
+        if not lot or lot.status != 'received':
+            raise ValueError('業者預けに戻せるのは「納品済み（未開封）」の塊だけです')
+        used = con.execute(text("""
+            SELECT c.period FROM meat_stock_count_lines ln JOIN meat_stock_counts c ON c.id = ln.count_id
+            WHERE ln.lot_id = :id AND c.status = 'confirmed' ORDER BY c.period
+        """), {'id': lot_id}).scalars().all()
+        if used:
+            raise ValueError(f'{"・".join(used)} の確定済み棚卸に入っているため戻せません。'
+                             '先にその棚卸を「入力中に戻す」にしてください')
+        slip_no = con.execute(text('SELECT slip_no FROM meat_purchase_slips WHERE id = :id'),
+                              {'id': lot.slip_id}).scalar() if lot.slip_id else None
+        note = f'納品取消（伝票 {slip_no or "-"}・{lot.received_on or "-"}）'
+        _set_status(con, lot_id, 'held', 'unreceive', staff, ' '.join(x for x in (note, memo) if x), None,
+                    {'slip_id': None, 'received_on': None})
+
+
+def lots_in_house_for_count(period):
+    """棚卸の対象：店内にある塊のうち、その期間の終わりまでに納品されたものだけ"""
+    _, end = period_bounds(period)
+    return [l for l in list_lots(IN_HOUSE) if not l.get('received_on') or l['received_on'][:10] < end]
+
+
 def process_lot(lot_id, input_kg, product_kg, trim_kg, loss_kg, staff, memo=''):
     """③ 捌き・商品化"""
     with engine.begin() as con:

@@ -322,6 +322,17 @@ def lot_cancel(lot_id):
     return redirect(url_for('meat.index', tab='held'))
 
 
+@bp.route('/lot/<int:lot_id>/unreceive', methods=['POST'])
+@admin_required
+def lot_unreceive(lot_id):
+    try:
+        mdb.unreceive_lot(lot_id, staff_name(), request.form.get('memo', '').strip())
+        flash('納品を取り消して、業者預けに戻しました', 'success')
+    except ValueError as e:
+        flash(str(e), 'danger')
+    return redirect(url_for('meat.lot_detail', lot_id=lot_id))
+
+
 @bp.route('/lot/<int:lot_id>/lookup', methods=['POST'])
 @admin_required
 def lot_lookup(lot_id):
@@ -366,7 +377,7 @@ def count(period):
                 flash(str(e), 'danger')
             return redirect(url_for('meat.count', period=period))
         lines, missing = [], []
-        for lot in mdb.list_lots(mdb.IN_HOUSE):
+        for lot in mdb.lots_in_house_for_count(period):
             key = f'lot_{lot["id"]}'
             if f.get(key + '_missing'):
                 missing.append(lot['id'])
@@ -406,7 +417,7 @@ def count(period):
     parts = mdb.list_parts()
     week = mdb.is_week(period)
     weekly_ids = {p['id'] for p in parts if p.get('count_weekly', 1)}
-    lots = [l for l in mdb.list_lots(mdb.IN_HOUSE) if not week or l['part_id'] in weekly_ids]
+    lots = [l for l in mdb.lots_in_house_for_count(period) if not week or l['part_id'] in weekly_ids]
     # 未開封の箱（納品済みのまま）は量らなくてよいので、ラベルの重さを最初から入れておく
     prefill = {l['id']: round(l['kg_now'], 2) for l in lots if l['status'] == 'received'}
     return render_template('meat/count.html', period=period, head=head, lots=lots, saved=saved, prefill=prefill,

@@ -237,6 +237,34 @@ check('error' in client.get('/meat/api/cattle/1399098647').get_json(), '見つ�
 check(client.get('/meat/api/cattle/123').status_code == 400, '10桁でなければエラー')
 cl.lookup = real_lookup
 
+# ---- 誤って納品にした塊を戻す／期間後の納品は棚卸に出ない ----
+d = mdb.create_held_lot({'part_id': parts['ウデモモ'], 'supplier_id': sup, 'label_kg': '10.0', 'trade_kg': '10.0',
+                         'unit_price': '4000', 'promised_on': '2026-10-20'}, '社長')
+e = mdb.create_held_lot({'part_id': parts['ウデモモ'], 'supplier_id': sup, 'label_kg': '9.0', 'trade_kg': '9.0',
+                         'unit_price': '4000', 'promised_on': '2026-10-20'}, '社長')
+mdb.receive_lots(sup, 'B-1', '2026-12-05', 0, [d, e], '社長')
+ids = [l['id'] for l in mdb.lots_in_house_for_count('2026-11')]
+check(d not in ids and e not in ids, '期間の後に納品した塊は、その期間の棚卸に出ない')
+check(d in [l['id'] for l in mdb.lots_in_house_for_count('2026-12')], '納品した月の棚卸には出る')
+res = client.post(f'/meat/lot/{d}/unreceive', data={'memo': 'まだ届いていない'})
+lot = mdb.get_lot(d)
+check(res.status_code == 302 and lot['status'] == 'held' and lot['slip_id'] is None and lot['received_on'] is None,
+      '納品取消：業者預けに戻り、伝票のひも付けが外れる')
+check(d not in [l['id'] for l in mdb.lots_in_house_for_count('2026-12')], '戻した塊は棚卸に出ない')
+check(d in [l['id'] for l in mdb.list_lots(('held',))], '戻した塊は納品の画面で選び直せる')
+mdb.save_count('2026-12', [{'part_id': parts['ウデモモ'], 'lot_id': e, 'kg': 9.0, 'state': 'raw'}], '社長', confirm=True)
+try:
+    mdb.unreceive_lot(e, '社長'); ok = False
+except ValueError:
+    ok = True
+check(ok and mdb.get_lot(e)['status'] == 'received', '確定済みの棚卸に入った塊は戻せない')
+mdb.process_lot(e, 9.0, 7.0, 1.0, 1.0, '社長')
+try:
+    mdb.unreceive_lot(e, '社長'); ok = False
+except ValueError:
+    ok = True
+check(ok, '捌いた塊は戻せない')
+
 from database import engine
 engine.dispose()
 try:
