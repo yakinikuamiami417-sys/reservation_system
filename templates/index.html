@@ -120,9 +120,12 @@
                   {% endfor %}
                 </div>
                 {% endif %}
+                {% if res.notes %}
+                <div class="res-note mt-2" style="font-size:1rem">📝 {{ res.notes }}</div>
+                {% endif %}
                 {% if res.organizer_note %}
-                <div class="mt-1 text-muted small">
-                  <i class="bi bi-chat-left-text me-1"></i>{{ res.organizer_note[:50] }}{% if res.organizer_note|length > 50 %}…{% endif %}
+                <div class="mt-1 text-muted" style="white-space:pre-wrap; font-size:.9rem">
+                  <i class="bi bi-chat-left-text me-1"></i>幹事メモ：{{ res.organizer_note }}
                 </div>
                 {% endif %}
               </div>

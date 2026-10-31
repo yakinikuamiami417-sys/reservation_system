@@ -317,7 +317,8 @@
           {% endif %}
 
           <!-- 開始時刻（枠の一番上） -->
-          <div class="tt-info" style="font-weight:800">{{ res.time_slot }}〜</div>
+          {% set _short_note = res.notes and res.height_px < 200 %}
+          <div class="tt-info" style="font-weight:800{% if _short_note %}; font-size:.86rem; letter-spacing:-.3px{% endif %}">{{ res.time_slot }}〜{% if _short_note %}{{ res.end_time }}{% endif %}</div>
 
           <div class="tt-name">
             {{ res.name }}
@@ -327,7 +328,7 @@
             {{ res.total_people }}名様
             {% if res.children_info %}（子{{ res.children_info|length }}：{% for c in res.children_info %}{{ c.age }}{% if not loop.last %}・{% endif %}{% endfor %}歳）{% endif %}
           </div>
-          {% if res.height_px >= 120 %}
+          {% if res.height_px >= 120 and (not res.notes or res.height_px >= 200) %}
           <div class="tt-info">
             {% if res.end_time_unspecified %}
             終了未定（目安2時間）
@@ -341,14 +342,13 @@
           </div>
           {% endif %}
           {% if res.notes %}
-          <div class="tt-note mt-1"
-               style="border-top:1px solid rgba(255,255,255,.25); padding-top:2px; font-size:.72rem; font-weight:700; white-space:normal; line-height:1.25; word-break:break-word">
-            📝 {{ res.notes[:60] }}{% if res.notes|length > 60 %}…{% endif %}
-          </div>
+          <div class="tt-note mt-1">📝 {{ res.notes }}<span class="tt-note-more">▼続き</span></div>
           {% endif %}
 
           <!-- 終了時刻（枠の一番下に固定） -->
+          {% if not _short_note %}
           <div class="tt-info tt-time-end" style="font-weight:800; border-top:1px solid rgba(255,255,255,.25); padding-top:3px">〜{{ res.end_time }}</div>
+          {% endif %}
 
         </div>
         {% endfor %}
@@ -403,9 +403,7 @@
               <span class="badge bg-warning text-dark d-block mt-1">🟡 {{ rot[0].gap_min }}分（15〜30分）</span>
               {% endif %}
               {% if rot[0].notes %}
-              <div class="mt-1" style="font-size:.68rem; color:#555; text-align:left; white-space:pre-wrap">
-                📝 {{ rot[0].notes[:40] }}{% if rot[0].notes|length > 40 %}…{% endif %}
-              </div>
+              <div class="mt-1 res-note" style="font-size:.78rem; text-align:left">📝 {{ rot[0].notes }}</div>
               {% endif %}
             {% else %}
               <span class="text-muted">—</span>
@@ -711,9 +709,7 @@ async function openQuickModal(rid) {
   if (_qmRes.notes) {
     notesEl.classList.remove('d-none');
     notesEl.innerHTML =
-      `<div class="p-2 rounded small mb-2" style="background:#fffbe6; border:1px solid #ffe082">
-         <span class="text-muted">📝 備考：</span>${_escHtml(_qmRes.notes)}
-       </div>`;
+      `<div class="res-note mb-2" style="font-size:1rem">📝 備考<br>${_escHtml(_qmRes.notes)}</div>`;
   } else {
     notesEl.classList.add('d-none');
   }
@@ -1121,6 +1117,14 @@ const _bodyRow   = document.querySelector('.tt-body-row');
 const _colScroll = document.querySelector('.tt-cols-scroll');
 
 // タップ（ドラッグなし）→ クイックモーダルを開く（ロック中の唯一の編集経路）
+function markCutNotes() {
+  document.querySelectorAll('.tt-note').forEach(n => {
+    n.classList.toggle('is-cut', n.scrollHeight > n.clientHeight + 2);
+  });
+}
+window.addEventListener('load', markCutNotes);
+window.addEventListener('resize', markCutNotes);
+
 document.querySelectorAll('.tt-res-block').forEach(b => {
     b.addEventListener('click', (e) => {
         if (TT_EDIT_MODE) return; // 編集モード中は _ddEnd 側でクリック判定済み
