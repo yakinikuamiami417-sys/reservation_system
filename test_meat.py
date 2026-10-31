@@ -265,6 +265,20 @@ except ValueError:
     ok = True
 check(ok, '捌いた塊は戻せない')
 
+# ---- 棚卸の画面から目利きに戻す（読み直さずに戻すのでJSONで返す）・どの画面にもタブ ----
+f_ = mdb.create_held_lot({'part_id': parts['クラシタ'], 'supplier_id': sup, 'label_kg': '20.0', 'trade_kg': '20.0',
+                          'unit_price': '4200', 'promised_on': '2026-10-20'}, '社長')
+mdb.receive_lots(sup, 'C-1', '2027-01-04', 0, [f_], '社長')
+h = client.get('/meat/count/2027-01').get_data(as_text=True)
+check(f'backToHeld({f_}' in h and '目利きに戻す' in h, '棚卸の画面：未開封の塊に「目利きに戻す」')
+for url in ['/meat/', '/meat/?tab=held', '/meat/receive', '/meat/count/2027-01', '/meat/closing/2027-01', '/meat/new']:
+    h = client.get(url).get_data(as_text=True)
+    check('meat-tabs' in h and '予約へ' in h, f'タブがある：{url}')
+r = client.post(f'/meat/lot/{f_}/unreceive', headers={'X-Requested-With': 'fetch'})
+check(r.status_code == 200 and r.get_json() == {'ok': True} and mdb.get_lot(f_)['status'] == 'held', '画面から戻すとJSONで成功が返る')
+r = client.post(f'/meat/lot/{f_}/unreceive', headers={'X-Requested-With': 'fetch'})
+check(r.status_code == 400 and 'error' in r.get_json(), '戻せない時はエラー文が返る')
+
 from database import engine
 engine.dispose()
 try:

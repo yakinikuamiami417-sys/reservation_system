@@ -23,15 +23,19 @@
     .badge-processed { background: #198754; }
     .muted-small { font-size: .8rem; color: #6c757d; }
     .container-narrow { max-width: 720px; }
+    .meat-tabs { position: sticky; top: 0; z-index: 1001; display: flex; background: #fff; border-bottom: 1px solid #ddd; }
+    .meat-tabs a { flex: 1; text-align: center; padding: 8px 2px 6px; font-size: .82rem; font-weight: 700;
+                   color: #555; text-decoration: none; border-bottom: 3px solid transparent; }
+    .meat-tabs a i { display: block; font-size: 1.15rem; line-height: 1.1; }
+    .meat-tabs a.on { color: var(--kirin-red); border-bottom-color: var(--kirin-red); background: #fbf3f3; }
   </style>
   {% block head %}{% endblock %}
 </head>
 <body>
 <div class="topbar px-3 py-2 d-flex align-items-center gap-2">
-  <a href="/" title="予約管理へ"><i class="bi bi-house"></i></a>
   <a class="brand" href="{{ url_for('meat.index') }}">正肉在庫</a>
   <div class="ms-auto d-flex align-items-center gap-2" style="font-size:.8rem">
-    <a href="{{ url_for('meat.closing', period=meat_week) }}"><i class="bi bi-graph-up"></i> 原価</a>
+    <a href="/" class="btn btn-sm btn-outline-secondary py-0 text-light" title="予約管理へ"><i class="bi bi-calendar3"></i> 予約へ</a>
     {% if meat_is_admin %}
       <span><i class="bi bi-pencil-square"></i> {{ meat_staff or '登録可' }}</span>
       <a href="{{ url_for('meat.lock') }}" class="btn btn-sm btn-outline-light py-0">終了</a>
@@ -41,6 +45,17 @@
     {% endif %}
   </div>
 </div>
+
+{# どの画面からでも行き来できるタブ（予約のページに戻らなくてよいように） #}
+{% set _ep = request.endpoint or '' %}
+{% set _tab = request.args.get('tab', 'house') %}
+<nav class="meat-tabs">
+  <a href="{{ url_for('meat.index', tab='house') }}" class="{{ 'on' if _ep in ('meat.index',) and _tab != 'held' or _ep == 'meat.lot_detail' }}"><i class="bi bi-box-seam"></i>在庫</a>
+  <a href="{{ url_for('meat.index', tab='held') }}" class="{{ 'on' if (_ep == 'meat.index' and _tab == 'held') or _ep == 'meat.new_lots' }}"><i class="bi bi-eye"></i>目利き</a>
+  <a href="{{ url_for('meat.receive') }}" class="{{ 'on' if _ep == 'meat.receive' }}"><i class="bi bi-truck"></i>納品</a>
+  <a href="{{ url_for('meat.count', period=meat_week) }}" class="{{ 'on' if _ep == 'meat.count' }}"><i class="bi bi-clipboard-check"></i>棚卸</a>
+  <a href="{{ url_for('meat.closing', period=meat_week) }}" class="{{ 'on' if _ep == 'meat.closing' }}"><i class="bi bi-graph-up"></i>原価</a>
+</nav>
 
 <div class="container container-narrow px-3 py-3">
   {% with messages = get_flashed_messages(with_categories=true) %}

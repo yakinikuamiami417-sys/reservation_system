@@ -24,6 +24,9 @@
 </ul>
 
 {% if tab == 'held' %}
+  {% if meat_is_admin %}
+  <a href="{{ url_for('meat.new_lots') }}" class="btn btn-warning w-100 fw-bold mb-2"><i class="bi bi-plus-lg"></i> 新しく目利きした肉を登録</a>
+  {% endif %}
   {% if not s.held %}
     <p class="text-muted text-center py-4">業者預けはありません</p>
   {% endif %}

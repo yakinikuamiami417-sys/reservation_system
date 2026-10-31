@@ -30,7 +30,7 @@
         <span class="muted-small">評価単価 {{ '{:,}'.format(prices.get(lot.part_id, 0) or 0) }}円/kg</span></div>
     {% endif %}
     {% set unopened = lot.status == 'received' %}
-    <div class="card p-2 px-3 mb-2 {{ '' if unopened else 'border border-primary' }}">
+    <div class="card p-2 px-3 mb-2 {{ '' if unopened else 'border border-primary' }}" id="lotcard-{{ lot.id }}">
       <div class="d-flex justify-content-between muted-small">
         <span><span class="badge badge-{{ lot.status }}">{{ '未開封' if unopened else '開封済み・量る' }}</span>
           {{ lot.sub_part_name or lot.label_item_name or '' }} #{{ lot.id }}</span>
@@ -47,6 +47,10 @@
                placeholder="{{ '' if unopened else '量った kg' }}"
                value="{{ saved.get(lot.id, prefill.get(lot.id, '')) }}" {{ 'disabled' if locked }}>
         <label class="text-nowrap muted-small"><input type="checkbox" name="lot_{{ lot.id }}_missing" value="1" {{ 'disabled' if locked }}> 無い</label>
+        {% if unopened and meat_is_admin and not locked %}
+        <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" onclick="backToHeld({{ lot.id }}, this)"
+                title="まだ届いていない塊を目利き（業者預け）に戻す"><i class="bi bi-arrow-return-left"></i> 目利きに戻す</button>
+        {% endif %}
       </div>
     </div>
   {% else %}
@@ -90,3 +94,28 @@
 </form>
 {% endblock %}
 {% block bottom %}{% endblock %}
+{% block scripts %}
+<script>
+// ページを読み直さずに戻すので、入力中の重さは消えない
+async function backToHeld(id, btn) {
+  const card = document.getElementById('lotcard-' + id);
+  const name = card.querySelector('.justify-content-between > span').innerText.trim();
+  if (!confirm(`#${id} ${name}
+まだ届いていない塊として、目利き（業者預け）に戻しますか？`)) return;
+  btn.disabled = true;
+  const body = new URLSearchParams({memo: '棚卸の画面から（未納品）'});
+  try {
+    const r = await fetch(`{{ url_for('meat.index') }}lot/${id}/unreceive`,
+                          {method: 'POST', body, headers: {'X-Requested-With': 'fetch'}});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || '戻せませんでした（管理者で入っているか確認してください）');
+    card.innerHTML = `<div class="text-muted py-1"><i class="bi bi-check-circle text-success"></i>
+      #${id} を目利き（業者預け）に戻しました。届いたら「納品」で選び直します。</div>`;
+    card.classList.add('bg-light');
+  } catch (e) {
+    alert(e.message);
+    btn.disabled = false;
+  }
+}
+</script>
+{% endblock %}

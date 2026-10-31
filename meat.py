@@ -53,7 +53,7 @@ def admin_required(f):
     @wraps(f)
     def wrapper(*a, **kw):
         if not is_admin():
-            if request.is_json or request.path.startswith('/meat/api/'):
+            if request.is_json or request.path.startswith('/meat/api/') or request.headers.get('X-Requested-With') == 'fetch':
                 return jsonify({'error': '登録には管理者パスワードが必要です'}), 403
             flash('登録・修正には管理者パスワードが必要です', 'warning')
             return redirect(url_for('meat.unlock', next=request.referrer or url_for('meat.index')))
@@ -325,11 +325,17 @@ def lot_cancel(lot_id):
 @bp.route('/lot/<int:lot_id>/unreceive', methods=['POST'])
 @admin_required
 def lot_unreceive(lot_id):
+    want_json = request.headers.get('X-Requested-With') == 'fetch'
     try:
         mdb.unreceive_lot(lot_id, staff_name(), request.form.get('memo', '').strip())
-        flash('納品を取り消して、業者預けに戻しました', 'success')
     except ValueError as e:
+        if want_json:
+            return jsonify({'error': str(e)}), 400
         flash(str(e), 'danger')
+        return redirect(url_for('meat.lot_detail', lot_id=lot_id))
+    if want_json:
+        return jsonify({'ok': True})
+    flash('納品を取り消して、目利き（業者預け）に戻しました', 'success')
     return redirect(url_for('meat.lot_detail', lot_id=lot_id))
 
 
