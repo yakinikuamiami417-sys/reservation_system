@@ -28,6 +28,28 @@
   </a>
 </div>
 
+{% if duty_summary %}
+{% set ds = duty_summary %}
+<a href="{{ url_for('duty.index', tab='night' if ds.open else 'morning') }}" class="duty-entry no-print">
+  <span class="duty-entry-title">📋 今日の仕事・申し送り</span>
+  <span class="duty-pill {{ 'warn' if ds.notes else 'zero' }}">申し送り {{ ds.notes }}件</span>
+  <span class="duty-pill {{ 'red' if ds.open else 'zero' }}">夜の依頼 未完了 {{ ds.open }}件{% if ds.open_old %}（前の日から {{ ds.open_old }}件）{% endif %}</span>
+  <span class="duty-pill {{ 'ok' if ds.morning_done == ds.morning_total else 'zero' }}">朝 {{ ds.morning_done }}/{{ ds.morning_total }}</span>
+  <span class="duty-pill {{ 'ok' if ds.evening_done == ds.evening_total else 'zero' }}">夕方 {{ ds.evening_done }}/{{ ds.evening_total }}</span>
+  <span class="duty-open">開く ›</span>
+</a>
+<style>
+  .duty-entry { display:flex; flex-wrap:wrap; gap:10px; align-items:center; background:#fff; border:3px solid #e0a800;
+                border-radius:14px; padding:12px 16px; margin-bottom:16px; text-decoration:none; color:#222; }
+  .duty-entry:hover { background:#fffbea; color:#222; }
+  .duty-entry-title { font-size:1.3rem; font-weight:800; }
+  .duty-pill { border-radius:30px; padding:6px 14px; font-weight:800; font-size:1.05rem; }
+  .duty-pill.red { background:#c1121f; color:#fff; } .duty-pill.warn { background:#fff3cd; color:#6b4b00; border:2px solid #e0a800; }
+  .duty-pill.ok { background:#d8f3dc; color:#14532d; } .duty-pill.zero { background:#eee; color:#666; }
+  .duty-open { margin-left:auto; background:#8B1A1A; color:#fff; border-radius:10px; padding:10px 20px; font-weight:800; font-size:1.1rem; }
+</style>
+{% endif %}
+
 {% if closure %}
 <div class="closure-banner d-flex flex-wrap align-items-center gap-2 mb-3">
   <i class="bi bi-calendar-x fs-5"></i>

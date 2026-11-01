@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>今日の仕事・申し送り | キリン屋</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-icons/font/bootstrap-icons.css') }}">
+<style>
+  :root { --red:#8B1A1A; --gold:#C9A84C; --bg:#f7f4f0; --ok:#198754; --need:#c1121f; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:#222; font-size:18px;
+         font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif; }
+  button, input, textarea, select { font:inherit; }
+  .top { position:sticky; top:0; z-index:20; background:#1a1a1a; color:var(--gold); border-bottom:3px solid var(--red);
+         padding:10px 14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .top .ttl { font-weight:800; font-size:20px; }
+  .top a, .top button { color:#fff; text-decoration:none; background:none; border:1px solid #777; border-radius:8px;
+         padding:6px 12px; font-size:16px; font-weight:700; cursor:pointer; }
+  .top .r { margin-left:auto; }
+  .tabs { position:sticky; top:56px; z-index:19; display:flex; background:#fff; border-bottom:1px solid #ccc; }
+  .tabs button { flex:1; border:none; background:none; padding:16px 4px 12px; font-size:21px; font-weight:800; color:#666;
+         border-bottom:5px solid transparent; cursor:pointer; }
+  .tabs button.on { color:var(--red); border-bottom-color:var(--red); background:#fbf3f3; }
+  .tabs .n { display:inline-block; min-width:28px; background:var(--need); color:#fff; border-radius:20px; font-size:15px;
+         padding:1px 8px; margin-left:4px; vertical-align:2px; }
+  .tabs .n.zero { background:#adb5bd; }
+  main { padding:14px; max-width:1100px; margin:0 auto 80px; }
+  .pane { display:none; } .pane.on { display:block; }
+  .past { background:#fff3cd; border:2px solid #e0a800; border-radius:10px; padding:10px 14px; margin-bottom:12px; font-weight:700; }
+  .who { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; font-weight:800; }
+  .chip { border:2px solid #aaa; border-radius:10px; padding:12px 20px; background:#fff; font-weight:800; font-size:19px; cursor:pointer; }
+  .chip.on { border-color:var(--red); background:var(--red); color:#fff; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(420px, 1fr)); gap:10px; }
+  .row { display:flex; align-items:center; gap:10px; background:#fff; border-radius:12px; padding:10px 12px; min-height:66px;
+         border:2px solid transparent; }
+  .row.pending { border-color:#e0a800; }
+  .row.done { background:#eef7ee; }
+  .box { width:46px; height:46px; border:3px solid #888; border-radius:9px; display:flex; align-items:center; justify-content:center;
+         font-size:30px; font-weight:900; flex:none; background:#fff; cursor:pointer; color:#fff; }
+  .box.on { background:var(--ok); border-color:var(--ok); }
+  .row .t { flex:1; font-weight:700; line-height:1.3; }
+  .row .t small { display:block; color:#777; font-weight:600; font-size:14px; }
+  .min { width:86px; border:2px solid #bbb; border-radius:9px; padding:9px 8px; text-align:right; font-size:20px; background:#fff; }
+  .minw { display:flex; align-items:center; gap:3px; color:#666; font-size:15px; }
+  .st { font-size:13px; font-weight:700; min-width:58px; text-align:center; line-height:1.2; }
+  .st.saving { color:#b07800; } .st.saved { color:var(--ok); } .st.err { color:var(--need); }
+  .sec { font-weight:800; font-size:20px; margin:18px 0 8px; border-left:6px solid var(--red); padding-left:8px; }
+  .sec small { font-weight:600; font-size:14px; color:#666; }
+  .judge { display:flex; gap:6px; flex:none; }
+  .judge button { border:2px solid #aaa; border-radius:9px; padding:10px 12px; font-weight:800; font-size:16px; background:#fff;
+         color:#666; cursor:pointer; }
+  .judge .unchecked.on { background:#e9ecef; border-color:#555; color:#222; }
+  .judge .ok.on { background:#2a9d8f; border-color:#2a9d8f; color:#fff; }
+  .judge .need.on { background:var(--need); border-color:var(--need); color:#fff; }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media (max-width: 900px) { .cols { grid-template-columns:1fr; } .grid { grid-template-columns:1fr; } }
+  .in { border:2px solid #bbb; border-radius:9px; padding:10px; font-size:18px; background:#fff; }
+  .btn { border:2px solid #555; border-radius:10px; padding:11px 18px; font-weight:800; font-size:18px; background:#fff; cursor:pointer; }
+  .btn.k { background:var(--red); color:#fff; border-color:var(--red); }
+  .btn.s { padding:7px 12px; font-size:15px; }
+  .btn:disabled { opacity:.5; }
+  .f { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+  .req { background:#fff; border-radius:12px; padding:12px 14px; margin-bottom:10px; border-left:9px solid var(--need); }
+  .req.old { border-left-color:#7b2cbf; }
+  .req.free { border-left-color:#0d6efd; }
+  .req .h { display:flex; gap:10px; align-items:center; font-weight:800; font-size:21px; flex-wrap:wrap; }
+  .tag { font-size:14px; border-radius:6px; padding:3px 8px; font-weight:800; color:#fff; background:var(--need); }
+  .tag.old { background:#7b2cbf; } .tag.free { background:#0d6efd; }
+  .logs { margin:6px 0 0; padding:0; list-style:none; font-size:15px; }
+  .logs li { background:#fff8e1; border-radius:7px; padding:5px 9px; margin-top:4px; }
+  .logs li.sys { background:#f1f3f5; color:#555; }
+  .done { background:#eef7ee; border-radius:10px; padding:10px 14px; margin-bottom:8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .done .x { margin-left:auto; }
+  .note { background:#fff; border:3px solid #e0a800; border-radius:12px; padding:10px 14px; margin-bottom:10px; }
+  .note .b { white-space:pre-wrap; font-size:19px; font-weight:700; margin-top:4px; }
+  .note .m { font-size:14px; color:#666; display:flex; gap:8px; align-items:center; }
+  .empty { color:#777; padding:12px; text-align:center; background:#fff; border-radius:12px; }
+  .hint { font-size:14px; color:#666; margin:8px 0; }
+  .cand { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  #toast { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:50; max-width:92vw; display:none;
+           padding:14px 20px; border-radius:12px; font-weight:800; font-size:18px; box-shadow:0 4px 18px rgba(0,0,0,.3); }
+  #toast.err { background:var(--need); color:#fff; } #toast.ok { background:#1a1a1a; color:#fff; }
+  #net { display:none; background:var(--need); color:#fff; text-align:center; font-weight:800; padding:8px; }
+</style>
+</head>
+<body>
+<div class="top">
+  <span class="ttl">📋 今日の仕事・申し送り</span>
+  <button type="button" onclick="moveDay(-1)">‹</button>
+  <span id="dlabel" style="color:#fff;font-weight:800"></span>
+  <button type="button" onclick="moveDay(1)">›</button>
+  <button type="button" id="todayBtn" onclick="goDay(S.today)">今日へ</button>
+  <a href="{{ url_for('duty.history_page') }}">履歴</a>
+  <a class="r" href="/">‹ 予約へ</a>
+</div>
+<div id="net">サーバーにつながりません。保存されていない操作があります。電波を確かめてください。</div>
+<div class="tabs">
+  <button type="button" data-tab="morning">朝の仕事 <span class="n" id="n-morning"></span></button>
+  <button type="button" data-tab="evening">夕方の仕事 <span class="n" id="n-evening"></span></button>
+  <button type="button" data-tab="night">夜への申し送り <span class="n" id="n-night"></span></button>
+</div>
+<main>
+  <div id="past" class="past" style="display:none"></div>
+  <section class="pane" id="p-morning"></section>
+  <section class="pane" id="p-evening"></section>
+  <section class="pane" id="p-night"></section>
+</main>
+<div id="toast"></div>
+<datalist id="names"></datalist>
+
+<script>
+let S = {{ state|tojson }};
+let TAB = {{ tab|tojson }};
+const pending = new Set();     // 保存中の項目（保存中は自動更新で上書きしない）
+const errs = {};               // 保存できなかった項目
+let dirty = false;             // 入力中に他のタブレットで変わった
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const md = d => d ? `${+d.slice(5,7)}/${+d.slice(8,10)}` : '';
+const hm = t => t ? t.slice(11,16) : '';
+const WD = ['日','月','火','水','木','金','土'];
+const dlabel = d => { const x = new Date(d + 'T00:00:00'); return `${x.getMonth()+1}月${x.getDate()}日（${WD[x.getDay()]}）`; };
+
+function toast(msg, kind='ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = kind; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', kind === 'err' ? 6000 : 2200);
+}
+
+async function api(url, body, key) {
+  if (key) { pending.add(key); delete errs[key]; render(); }
+  try {
+    const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+                                body: JSON.stringify(Object.assign({date: S.date}, body))});
+    let j = null;
+    try { j = await r.json(); } catch (e) {}
+    document.getElementById('net').style.display = 'none';
+    if (!r.ok || !j || !j.ok) {
+      if (key) errs[key] = true;
+      if (j && j.state) S = j.state;
+      toast((j && j.error) || '保存できませんでした。もう一度押してください', 'err');
+      return false;
+    }
+    S = j.state;
+    return true;
+  } catch (e) {
+    if (key) errs[key] = true;
+    document.getElementById('net').style.display = 'block';
+    toast('保存できませんでした（通信エラー）。もう一度押してください', 'err');
+    return false;
+  } finally {
+    if (key) pending.delete(key);
+    render();
+  }
+}
+
+// ---------- 朝・夕方 ----------
+function checkRow(it, section) {
+  const c = S.checks[it.id] || {done:0, minutes:null, version:0};
+  const key = 'c' + it.id;
+  const st = pending.has(key) ? '<span class="st saving">保存中…</span>'
+           : errs[key] ? '<span class="st err">保存<br>できず</span>'
+           : c.updated_at ? `<span class="st saved">保存済<br>${hm(c.updated_at)}</span>` : '<span class="st"></span>';
+  return `<div class="row ${c.done ? 'done' : ''} ${pending.has(key) ? 'pending' : ''}">
+    <div class="box ${c.done ? 'on' : ''}" onclick="toggleCheck(${it.id}, '${section}')">${c.done ? '✓' : ''}</div>
+    <div class="t" onclick="toggleCheck(${it.id}, '${section}')">${esc(it.name)}${it.note ? `<small>（${esc(it.note)}）</small>` : ''}
+      ${c.done && c.staff_name ? `<small>${esc(c.staff_name)}</small>` : ''}</div>
+    <span class="minw"><input class="min" inputmode="numeric" placeholder="分" value="${c.minutes ?? ''}"
+       onfocus="this.select()" onchange="saveMinutes(${it.id}, '${section}', this.value)">分</span>
+    ${st}</div>`;
+}
+
+function staffOf(section) { return (S.staff || {})[section] || ''; }
+
+async function toggleCheck(id, section) {
+  const key = 'c' + id;
+  if (pending.has(key)) return;
+  const c = S.checks[id] || {done:0, minutes:null, version:0};
+  const staff = staffOf(section);
+  if (!c.done && !staff) { toast(section === 'morning' ? '先に朝の確認者を選んでください' : '先に夕方の担当者の名前を入れてください', 'err'); return; }
+  await api('{{ url_for("duty.api_check") }}', {item_id:id, done: !c.done, minutes:c.minutes, staff: staff || c.staff_name, version:c.version}, key);
+}
+
+async function saveMinutes(id, section, v) {
+  const c = S.checks[id] || {done:0, minutes:null, version:0};
+  await api('{{ url_for("duty.api_check") }}', {item_id:id, done: !!c.done, minutes:v, staff: c.staff_name || staffOf(section), version:c.version}, 'c' + id);
+}
+
+async function setStaff(section, name) {
+  await api('{{ url_for("duty.api_staff") }}', {section, name}, 's' + section);
+}
+
+function renderMorning() {
+  const who = S.morning_staff_choices.map(n =>
+    `<button type="button" class="chip ${staffOf('morning') === n ? 'on' : ''}" onclick="setStaff('morning', '${esc(n)}')">${esc(n)}</button>`).join('');
+  const cand = (S.items.candidate || []).map(i => esc(i.name)).join('／');
+  return `<div class="who">朝の確認者：${who}</div>
+    <div class="grid">${S.items.morning.map(i => checkRow(i, 'morning')).join('')}</div>
+    <div class="hint">✓ は保存できてから付きます。「保存できず」と出たら、もう一度押してください。</div>
+    <div class="hint">追加候補（${cand}）は分担が決まるまで必須にしていません。必要な日は「夜への申し送り」から夜に頼めます。</div>
+    <div class="f"><button type="button" class="btn k" onclick="showTab('night')">夜への申し送り（細かい8か所の点検）へ ›</button></div>`;
+}
+
+function renderEvening() {
+  return `<div class="who">夕方の担当者：
+      <input class="in" id="evStaff" list="names" style="width:240px" placeholder="名前" value="${esc(staffOf('evening'))}">
+      <button type="button" class="btn" onclick="setStaff('evening', document.getElementById('evStaff').value)">決定</button></div>
+    <div class="grid">${S.items.evening.map(i => checkRow(i, 'evening')).join('')}</div>`;
+}
+
+// ---------- 夜への申し送り ----------
+function inspectRow(it) {
+  const v = S.inspections[it.id] || {state:'unchecked', version:0};
+  const key = 'i' + it.id;
+  const b = (s, label) => `<button type="button" class="${s} ${v.state === s ? 'on' : ''}" ${pending.has(key) ? 'disabled' : ''}
+      onclick="inspect(${it.id}, '${s}')">${label}</button>`;
+  const st = pending.has(key) ? '<span class="st saving">保存中…</span>' : errs[key] ? '<span class="st err">保存<br>できず</span>' : '';
+  return `<div class="row" style="margin-bottom:6px"><div class="t">${esc(it.name)}</div>
+    <div class="judge">${b('unchecked','未確認')}${b('ok','問題なし')}${b('need','要掃除')}</div>${st}</div>`;
+}
+
+async function inspect(id, state) {
+  const v = S.inspections[id] || {state:'unchecked', version:0};
+  if (v.state === state) return;
+  const staff = staffOf('morning');
+  if (state !== 'unchecked' && !staff) { toast('先に「朝の仕事」で朝の確認者を選んでください', 'err'); return; }
+  await api('{{ url_for("duty.api_inspect") }}', {item_id:id, state, staff, version:v.version}, 'i' + id);
+}
+
+const ACT = {create:'依頼', reflag:'再び要掃除', memo:'', done:'完了', reopen:'訂正（未完了に戻す）', void:'取り消し'};
+function logsHtml(r) {
+  return `<ul class="logs">${r.logs.filter(l => l.action !== 'create').map(l =>
+    `<li class="${l.action === 'memo' ? '' : 'sys'}">${md(l.work_date)} ${hm(l.logged_at)} ${esc(l.staff_name)}：
+      ${ACT[l.action] ? `<b>${ACT[l.action]}</b> ` : ''}${esc(l.memo)}</li>`).join('')}</ul>`;
+}
+
+function reqCard(r) {
+  const old = r.origin_date < S.date, free = !r.item_id;
+  const key = 'r' + r.id;
+  return `<div class="req ${old ? 'old' : free ? 'free' : ''}" id="req-${r.id}">
+    <div class="h"><span class="tag ${old ? 'old' : free ? 'free' : ''}">${md(r.origin_date)}${old ? 'から' : ''}${free ? ' 自由' : ''}</span>
+      ${esc(r.title)} <small style="font-weight:600;font-size:14px;color:#777">${esc(r.created_by)}</small></div>
+    ${logsHtml(r)}
+    <div class="f">
+      <input class="in" id="ex-${r.id}" list="names" placeholder="実行者の名前" style="width:180px">
+      <span class="minw"><input class="min" id="mi-${r.id}" inputmode="numeric" placeholder="分">分</span>
+      <button type="button" class="btn k" ${pending.has(key) ? 'disabled' : ''} onclick="completeReq(${r.id})">${pending.has(key) ? '保存中…' : '完了'}</button>
+      <button type="button" class="btn s" onclick="memoReq(${r.id})">できなかった理由・追記</button>
+      <button type="button" class="btn s" onclick="voidReq(${r.id})">依頼を取り消す</button>
+    </div></div>`;
+}
+
+function askName(defaultName) {
+  const n = prompt('あなたの名前を入れてください', defaultName || '');
+  return n && n.trim() ? n.trim() : null;
+}
+
+async function completeReq(id) {
+  const r = S.open_requests.find(x => x.id === id); if (!r) return;
+  const ex = document.getElementById('ex-' + id).value.trim(), mi = document.getElementById('mi-' + id).value.trim();
+  if (!ex) { toast('実行者の名前を入れてください', 'err'); return; }
+  if (!mi) { toast('実際にかかった時間（分）を入れてください', 'err'); return; }
+  if (await api(`{{ url_for('duty.index') }}api/request/${id}/complete`, {version:r.version, executor:ex, minutes:mi}, 'r' + id))
+    toast(`「${r.title}」を完了にしました`);
+}
+
+async function memoReq(id) {
+  const r = S.open_requests.find(x => x.id === id); if (!r) return;
+  const memo = prompt(`「${r.title}」\nできなかった理由・申し送りを書いてください`); if (!memo || !memo.trim()) return;
+  const name = askName(document.getElementById('ex-' + id).value); if (!name) return;
+  await api(`{{ url_for('duty.index') }}api/request/${id}/memo`, {staff:name, memo}, 'r' + id);
+}
+
+async function voidReq(id) {
+  const r = S.open_requests.find(x => x.id === id); if (!r) return;
+  if (!confirm(`「${r.title}」の依頼を取り消しますか？（間違えて追加した時だけ。履歴は残ります）`)) return;
+  const name = askName(staffOf('morning')); if (!name) return;
+  await api(`{{ url_for('duty.index') }}api/request/${id}/void`, {version:r.version, staff:name, memo:''}, 'r' + id);
+}
+
+async function reopenReq(id) {
+  const r = S.done_requests.find(x => x.id === id); if (!r) return;
+  if (!confirm(`「${r.title}」の完了を取り消して、残りに戻しますか？`)) return;
+  const memo = prompt('訂正の理由（例：押し間違い）') || '押し間違いの訂正';
+  const name = askName(); if (!name) return;
+  await api(`{{ url_for('duty.index') }}api/request/${id}/reopen`, {version:r.version, staff:name, memo}, 'd' + id);
+}
+
+async function addReq(title) {
+  title = (title ?? document.getElementById('newReq').value).trim();
+  if (!title) { toast('仕事の内容を入れてください', 'err'); return; }
+  const staff = staffOf('morning') || askName(); if (!staff) return;
+  if (await api('{{ url_for("duty.api_request_add") }}', {title, staff}, 'add')) {
+    const el = document.getElementById('newReq'); if (el) el.value = '';
+    toast(`「${title}」を夜に頼みました`);
+  }
+}
+
+async function addNote() {
+  const body = document.getElementById('noteBody').value.trim();
+  const staff = document.getElementById('noteWho').value.trim();
+  if (!body) { toast('申し送り文を入れてください', 'err'); return; }
+  if (!staff) { toast('書いた人の名前を選んでください', 'err'); return; }
+  if (await api('{{ url_for("duty.api_note_add") }}', {staff, body}, 'note')) {
+    document.getElementById('noteBody').value = '';
+    toast('申し送りを送りました');
+  }
+}
+
+async function delNote(id) {
+  if (!confirm('この申し送りを取り消しますか？')) return;
+  const name = askName(staffOf('morning')); if (!name) return;
+  await api(`{{ url_for('duty.index') }}api/note/${id}/delete`, {staff:name}, 'n' + id);
+}
+
+function renderNight() {
+  const ins = S.items.detail.map(inspectRow).join('');
+  const cand = (S.items.candidate || []).map(i =>
+    `<button type="button" class="btn s" onclick="addReq('${esc(i.name)}')">＋ ${esc(i.name)}</button>`).join('');
+  const whoOpts = [...new Set([staffOf('morning'), ...S.morning_staff_choices, ...S.names].filter(Boolean))]
+    .map(n => `<option ${n === staffOf('morning') ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  const notes = S.notes.length ? S.notes.map(n => `<div class="note"><div class="m">📝 ${esc(n.staff_name)}・${hm(n.created_at)}
+      <button type="button" class="btn s" style="margin-left:auto" onclick="delNote(${n.id})">取り消す</button></div>
+      <div class="b">${esc(n.body)}</div></div>`).join('') : '<div class="empty">この日の申し送り文はまだありません</div>';
+  const open = S.open_requests.length ? S.open_requests.map(reqCard).join('') : '<div class="empty">残っている依頼はありません 🎉</div>';
+  const done = S.done_requests.length ? S.done_requests.map(r => `<div class="done">✅ <b>${esc(r.title)}</b>
+      <span style="font-size:15px">（${md(r.origin_date)}発生）${esc(r.executor)}・${r.minutes}分・${hm(r.done_at)}</span>
+      <button type="button" class="btn s x" ${pending.has('d' + r.id) ? 'disabled' : ''} onclick="reopenReq(${r.id})">訂正</button></div>`).join('')
+      : '<div class="empty">この日に完了した依頼はまだありません</div>';
+  return `<div class="cols"><div>
+      <div class="sec">朝の点検（細かい8か所）<small>　要掃除にすると、右の「夜の依頼」に並びます</small></div>
+      ${staffOf('morning') ? '' : '<div class="past">朝の確認者がまだ選ばれていません。「朝の仕事」で選んでください。</div>'}
+      ${ins}
+      <div class="sec">自由な仕事を夜に頼む</div>
+      <div class="f"><input class="in" id="newReq" style="flex:1;min-width:220px" placeholder="例：2階の座敷の網戸を拭く">
+        <button type="button" class="btn k" onclick="addReq()">頼む</button></div>
+      <div class="hint">追加候補（分担未定）：</div><div class="cand">${cand}</div>
+      <div class="sec">申し送り文<small>　場所・卓番号はここに書いてください</small></div>
+      <textarea class="in" id="noteBody" style="width:100%;height:110px" placeholder="例：10番の障子の桟、ほこりが多いです。"></textarea>
+      <div class="f"><select class="in" id="noteWho">${whoOpts}</select>
+        <button type="button" class="btn k" ${pending.has('note') ? 'disabled' : ''} onclick="addNote()">${pending.has('note') ? '送信中…' : '申し送りを送る'}</button></div>
+    </div><div>
+      <div class="sec">📝 ${md(S.date)} の申し送り</div>${notes}
+      <div class="sec">夜の依頼　残り ${S.open_requests.length}件${S.counts.open_old ? `<small>（前の日から ${S.counts.open_old}件）</small>` : ''}</div>${open}
+      <div class="sec" style="border-color:var(--ok)">${md(S.date)} に完了した依頼</div>${done}
+    </div></div>`;
+}
+
+// ---------- 全体 ----------
+function keepInputs(fn) {
+  // 描き直しても、入力途中の文字は消さない
+  const keep = {};
+  document.querySelectorAll('main input[id], main textarea[id], main select[id]').forEach(e => keep[e.id] = e.value);
+  const focused = document.activeElement && document.activeElement.id;
+  fn();
+  Object.entries(keep).forEach(([id, v]) => { const e = document.getElementById(id); if (e && v !== '' && e.tagName !== 'SELECT') e.value = v; });
+  if (focused) { const e = document.getElementById(focused); if (e) e.focus(); }
+}
+
+function render() {
+  keepInputs(() => {
+    document.getElementById('p-morning').innerHTML = renderMorning();
+    document.getElementById('p-evening').innerHTML = renderEvening();
+    document.getElementById('p-night').innerHTML = renderNight();
+  });
+  const c = S.counts;
+  const setN = (id, n) => { const e = document.getElementById(id); e.textContent = n; e.className = 'n' + (n ? '' : ' zero'); };
+  setN('n-morning', c.morning_total - c.morning_done);
+  setN('n-evening', c.evening_total - c.evening_done);
+  setN('n-night', c.open);
+  document.getElementById('dlabel').textContent = dlabel(S.date);
+  document.getElementById('todayBtn').style.display = S.is_today ? 'none' : '';
+  const past = document.getElementById('past');
+  past.style.display = S.is_today ? 'none' : 'block';
+  past.textContent = `${dlabel(S.date)} を表示しています（今日ではありません）。訂正もここでできます。`;
+  document.getElementById('names').innerHTML = S.names.map(n => `<option value="${esc(n)}">`).join('');
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === TAB));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'p-' + TAB));
+}
+
+function showTab(t) {
+  TAB = t; render(); window.scrollTo(0, 0);
+  history.replaceState(null, '', `?date=${S.date}&tab=${t}`);
+}
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+async function goDay(d) {
+  const r = await fetch(`{{ url_for('duty.api_state') }}?date=${d}`, {cache:'no-store'});
+  if (r.ok) { S = await r.json(); render(); history.replaceState(null, '', `?date=${S.date}&tab=${TAB}`); }
+}
+function moveDay(n) { const x = new Date(S.date + 'T00:00:00'); x.setDate(x.getDate() + n);
+  goDay(`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`); }
+
+// ほかのタブレットの変更を数秒ごとに取り込む（入力中・保存中は待つ）
+const typing = () => { const a = document.activeElement; return a && /INPUT|TEXTAREA|SELECT/.test(a.tagName) && a.value; };
+async function poll() {
+  try {
+    const r = await fetch('{{ url_for("duty.api_rev") }}', {cache:'no-store'});
+    if (!r.ok) throw 0;
+    const j = await r.json();
+    document.getElementById('net').style.display = 'none';
+    if (j.rev !== S.rev || dirty) {
+      if (pending.size || typing()) { dirty = true; return; }
+      dirty = false;
+      const s = await fetch(`{{ url_for('duty.api_state') }}?date=${S.date}`, {cache:'no-store'});
+      if (s.ok) { S = await s.json(); render(); }
+    }
+  } catch (e) { document.getElementById('net').style.display = 'block'; }
+}
+setInterval(poll, 5000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+render();
+</script>
+</body>
+</html>

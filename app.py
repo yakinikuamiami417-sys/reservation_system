@@ -64,6 +64,24 @@ try:
 except Exception as e:
     print(f"[WARN] 正肉在庫のDB初期化に失敗しました: {e}")
 
+# 今日の仕事・申し送り（/duty 以下）。予約の表には触らない
+import duty
+import duty_db
+app.register_blueprint(duty.bp)
+try:
+    duty_db.init_duty_db()
+except Exception as e:
+    print(f"[WARN] 今日の仕事のDB初期化に失敗しました: {e}")
+
+
+def _duty_summary():
+    """予約台帳の入口に出す件数。失敗しても予約の画面は必ず出す"""
+    try:
+        return duty_db.summary()
+    except Exception as e:
+        print(f"[WARN] 今日の仕事の件数を出せませんでした: {e}")
+        return None
+
 @app.before_request
 def require_auth():
     # public_reserve / api_public_closure はお客様向け画面のためログイン不要
@@ -294,6 +312,7 @@ def index():
 
     return render_template(
         'index.html',
+        duty_summary = _duty_summary(),
         reservations = reservations,
         cancelled    = cancelled,
         target_date  = target_date,

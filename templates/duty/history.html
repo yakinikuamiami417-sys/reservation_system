@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>夜の依頼の履歴 | キリン屋</title>
+<style>
+  body { margin:0; background:#f7f4f0; color:#222; font-size:17px;
+         font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif; }
+  .top { background:#1a1a1a; color:#C9A84C; border-bottom:3px solid #8B1A1A; padding:12px 14px; display:flex; gap:10px; align-items:center; }
+  .top b { font-size:20px; }
+  .top a { margin-left:auto; color:#fff; text-decoration:none; border:1px solid #777; border-radius:8px; padding:6px 12px; font-weight:700; }
+  main { max-width:900px; margin:0 auto; padding:14px; }
+  .r { background:#fff; border-radius:12px; padding:10px 14px; margin-bottom:8px; border-left:8px solid #198754; }
+  .r.void { border-left-color:#adb5bd; color:#666; }
+  .h { font-weight:800; font-size:19px; }
+  .meta { font-size:14px; color:#555; margin-top:2px; }
+  ul { margin:6px 0 0; padding-left:18px; font-size:14px; color:#444; }
+</style>
+</head>
+<body>
+<div class="top"><b>📋 夜の依頼の履歴（60日）</b><a href="{{ url_for('duty.index', tab='night') }}">‹ 今日の仕事へ</a></div>
+<main>
+  {% for r in reqs %}
+  <div class="r {{ r.status }}">
+    <div class="h">{{ '✅' if r.status == 'done' else '✖ 取り消し' }} {{ r.title }}</div>
+    <div class="meta">発生 {{ r.origin_date }}（{{ r.created_by or '-' }}）
+      {% if r.status == 'done' %}／完了 {{ r.done_at }}　{{ r.executor }}・{{ r.minutes }}分{% endif %}</div>
+    <ul>
+      {% for l in r.logs %}<li>{{ l.logged_at }} {{ l.staff_name }}：{{ {'create':'依頼','reflag':'再び要掃除','memo':'追記','done':'完了','reopen':'訂正','void':'取り消し'}.get(l.action, l.action) }} {{ l.memo }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <p>まだ履歴はありません。</p>
+  {% endfor %}
+</main>
+</body>
+</html>
