@@ -30,6 +30,17 @@
         <span class="muted-small d-flex justify-content-between">
           <span>{{ lot.label_item_name or '' }} {{ lot.individual_no or '' }}</span>
           <span>¥{{ '{:,}'.format(lot.promised_amount or 0) }}</span></span>
+        {% if lot.individual_no %}
+        <span class="d-block mt-1" style="font-size:.88rem">
+          {% if lot.cattle_fetched_at %}
+            <span class="badge bg-light text-dark border">月齢 {{ lot.cattle_age_months if lot.cattle_age_months is not none else '-' }}か月</span>
+            生産者 <b>{{ lot.cattle_producer or '（氏名の公表なし）' }}</b>
+            <span class="muted-small">{{ lot.cattle_producer_place or '' }}</span>
+          {% else %}
+            <span class="muted-small">月齢・生産者：まだ照会していません（塊の画面で照会できます）</span>
+          {% endif %}
+        </span>
+        {% endif %}
       </span>
     </label>
     {% endfor %}

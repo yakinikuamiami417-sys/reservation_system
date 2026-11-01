@@ -279,6 +279,16 @@ check(r.status_code == 200 and r.get_json() == {'ok': True} and mdb.get_lot(f_)[
 r = client.post(f'/meat/lot/{f_}/unreceive', headers={'X-Requested-With': 'fetch'})
 check(r.status_code == 400 and 'error' in r.get_json(), '戻せない時はエラー文が返る')
 
+# ---- 納品の画面に月齢・生産者 ----
+g_ = mdb.create_held_lot({'part_id': parts['クラシタ'], 'supplier_id': sup, 'label_kg': '20.0', 'trade_kg': '20.0',
+                          'unit_price': '4200', 'promised_on': '2026-10-20', 'individual_no': '1463224934'}, '社長')
+mdb.create_held_lot({'part_id': parts['クラシタ'], 'supplier_id': sup, 'label_kg': '20.0', 'trade_kg': '20.0',
+                     'unit_price': '4200', 'promised_on': '2026-10-20', 'individual_no': '1111111118'}, '社長')
+h = client.get('/meat/receive').get_data(as_text=True)
+c_ = mdb.get_cattle('1463224934')
+check('月齢 29か月' in h and (c_['producer_name'] or '（氏名の公表なし）') in h, '納品の画面に月齢・生産者が出る')
+check('まだ照会していません' in h, '未照会の番号はその旨を出す')
+
 from database import engine
 engine.dispose()
 try:

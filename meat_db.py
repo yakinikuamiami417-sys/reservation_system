@@ -486,11 +486,14 @@ def create_held_lot(d, staff):
 
 _LOT_SELECT = """
     SELECT l.*, p.name AS part_name, p.category AS part_category, p.sort_order AS part_sort,
-           s.name AS supplier_name, sl.slip_no, sl.slip_date
+           s.name AS supplier_name, sl.slip_no, sl.slip_date,
+           ct.age_months AS cattle_age_months, ct.producer_name AS cattle_producer,
+           ct.producer_place AS cattle_producer_place, ct.fetched_at AS cattle_fetched_at
     FROM meat_lots l
     JOIN meat_parts p ON p.id = l.part_id
     JOIN meat_suppliers s ON s.id = l.supplier_id
     LEFT JOIN meat_purchase_slips sl ON sl.id = l.slip_id
+    LEFT JOIN meat_cattle ct ON ct.individual_no = l.individual_no
 """
 
 
