@@ -88,14 +88,19 @@ def require_auth():
     public = {'login', 'static', 'api_last_change', 'public_reserve', 'api_public_closure'}
     if not APP_PASSWORD or request.endpoint in public or session.get('ok'):
         return
-    return redirect(url_for('login', next=request.path))
+    # 日付などの指定（?date=…）も残して、ログインのあと同じ画面に戻す
+    return redirect(url_for('login', next=request.full_path.rstrip('?')))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         if request.form.get('pw') == APP_PASSWORD:
             session['ok'] = True
-            return redirect(request.args.get('next') or url_for('index'))
+            nxt = request.args.get('next') or ''
+            # 戻り先はこのサイトの中だけ（//example.com などの外へは飛ばさない）
+            if not nxt.startswith('/') or nxt.startswith('//'):
+                nxt = url_for('index')
+            return redirect(nxt)
         return render_template('login.html', error=True)
     return render_template('login.html', error=False)
 
