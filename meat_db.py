@@ -763,9 +763,32 @@ def unreceive_lot(lot_id, staff, memo=''):
 
 
 def lots_in_house_for_count(period):
-    """棚卸の対象：店内にある塊のうち、その期間の終わりまでに納品されたものだけ"""
+    """棚卸の対象：その期間の終わりまでに納品された塊。
+    さかのぼって入れる時（10月末の分を11月に入れる等）は、期間の後に使い切った塊も出す（その時は店にあったため）"""
     _, end = period_bounds(period)
-    return [l for l in list_lots(IN_HOUSE) if not l.get('received_on') or l['received_on'][:10] < end]
+    lots = [l for l in list_lots(IN_HOUSE) if not l.get('received_on') or l['received_on'][:10] < end]
+    with engine.begin() as con:
+        used_after = {r.lot_id: r.at for r in con.execute(text("""
+            SELECT e.lot_id, MIN(e.logged_at) AS at FROM meat_lot_events e JOIN meat_lots l ON l.id = e.lot_id
+            WHERE l.status = 'consumed' AND e.event_type = 'consume' AND e.logged_at >= :end
+              AND l.received_on IS NOT NULL AND l.received_on < :end
+            GROUP BY e.lot_id
+        """), {'end': end})}
+    if used_after:
+        for l in list_lots(('consumed',)):
+            if l['id'] in used_after:
+                l['used_after'] = used_after[l['id']][:10]
+                l['kg_now'] = l['label_kg'] or 0   # 今は0kg。期間末の重さは量った値を入れてもらう
+                lots.append(l)
+    return lots
+
+
+def _changed_after(con, lot_id, end):
+    """期間の後に、量った・捌いた・使い切った記録がある塊か（さかのぼりの棚卸で今の重さを上書きしないため）"""
+    return bool(con.execute(text("""
+        SELECT COUNT(*) FROM meat_lot_events
+        WHERE lot_id = :l AND logged_at >= :end AND event_type IN ('weigh', 'process', 'consume')
+    """), {'l': lot_id, 'end': end}).scalar())
 
 
 def reclassify_lot(lot_id, new_part_id, staff, memo=''):
@@ -893,6 +916,15 @@ def next_period(period):
     return f'{y + (m == 12)}-{m % 12 + 1:02d}'
 
 
+def recent_months(today, n=6):
+    """棚卸を開ける月（今月から n か月前まで、新しい順）"""
+    out, p = [], today.strftime('%Y-%m')
+    for _ in range(n):
+        out.append(p)
+        p = prev_period(p)
+    return out
+
+
 def period_label(period):
     if is_week(period):
         s, e = period_bounds(period)
@@ -989,6 +1021,12 @@ def save_count(period, lines, staff, confirm=False, missing_lot_ids=()):
         con.execute(text('UPDATE meat_stock_counts SET counted_at = :t, staff_name = :s, status = :st WHERE id = :id'),
                     {'t': _now(), 's': staff, 'st': 'confirmed' if confirm else 'draft', 'id': count_id})
         if confirm:
+            _, end = period_bounds(period)
+            # さかのぼりの棚卸：期間の後に動きのあった塊は、今の重さ・状態を変えない（棚卸の行だけ残す）
+            later = {lid for lid in {ln.get('lot_id') for ln in lines} | set(missing_lot_ids)
+                     if lid and _changed_after(con, lid, end)}
+            lines = [ln for ln in lines if ln.get('lot_id') not in later]
+            missing_lot_ids = [lid for lid in missing_lot_ids if lid not in later]
             for ln in lines:
                 if ln.get('lot_id'):
                     _set_status(con, ln['lot_id'],
@@ -996,6 +1034,8 @@ def save_count(period, lines, staff, confirm=False, missing_lot_ids=()):
                                             {'id': ln['lot_id']}).scalar(),
                                 'weigh', staff, f'{period} 棚卸', ln['kg'], {'current_kg': ln['kg']})
             for lot_id in missing_lot_ids:
+                if con.execute(text('SELECT status FROM meat_lots WHERE id = :id'), {'id': lot_id}).scalar() == 'consumed':
+                    continue
                 _set_status(con, lot_id, 'consumed', 'consume', staff, f'{period} 棚卸で見つからず', 0,
                             {'current_kg': 0})
     return count_id

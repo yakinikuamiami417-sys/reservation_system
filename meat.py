@@ -421,12 +421,14 @@ def count(period):
             forgot = [f'{l["part_name"]} #{l["id"]}' for l in mdb.list_lots(('processed',))
                       if l['id'] not in missing and l['part_id'] not in counted_parts
                       and f'lot_{l["id"]}' in f]
-            blank = [f'{l["part_name"]} #{l["id"]}' for l in mdb.list_lots(('received',))
-                     if l['id'] not in missing and f'lot_{l["id"]}' in f and not f.get(f'lot_{l["id"]}', '').strip()]
+            # 未開封の箱と、期間の後に使い切った塊（さかのぼりの時）は、空欄を0kgとして数えない
+            blank = [f'{l["part_name"]} #{l["id"]}' for l in mdb.lots_in_house_for_count(period)
+                     if (l['status'] == 'received' or l.get('used_after'))
+                     and l['id'] not in missing and f'lot_{l["id"]}' in f and not f.get(f'lot_{l["id"]}', '').strip()]
             if blank:
                 mdb.save_count(period, lines, staff_name())
                 flash('重さが空欄の未開封の箱があります：' + '、'.join(blank) +
-                      '。空欄は0kgとして数えません。重さを入れるか、無ければ「無い」にしてください（一時保存しました）', 'warning')
+                      '。空欄は0kgとして数えません。重さを入れるか、その時に無かったなら「無い」にしてください（一時保存しました）', 'warning')
                 return redirect(url_for('meat.count', period=period))
             if forgot:
                 mdb.save_count(period, lines, staff_name())
@@ -450,7 +452,15 @@ def count(period):
     lots = [l for l in mdb.lots_in_house_for_count(period) if not week or l['part_id'] in weekly_ids]
     # 未開封の箱（納品済みのまま）は量らなくてよいので、ラベルの重さを最初から入れておく
     prefill = {l['id']: round(l['kg_now'], 2) for l in lots if l['status'] == 'received'}
+    # 期間の後に使い切った塊は、その時の重さが分からないので空欄（量った値を入れる）
+    _, end = mdb.period_bounds(period)
+    is_past = end <= _today().isoformat()
+    months = mdb.recent_months(_today())
+    if period[:7] not in months:
+        months.append(period[:7])
     return render_template('meat/count.html', period=period, head=head, lots=lots, saved=saved, prefill=prefill,
+                           prev_p=mdb.prev_period(period), next_p=mdb.next_period(period), months=months,
+                           is_past=is_past, this_week=_this_week(), this_month=_this_period(),
                            extras=extras, parts=[p for p in parts if not week or p['id'] in weekly_ids],
                            monthly_only=[p['name'] for p in parts if p['id'] not in weekly_ids] if week else [],
                            is_week=week, prices=mdb.valuation_prices(period))

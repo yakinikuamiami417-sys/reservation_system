@@ -1,14 +1,35 @@
 {% extends "meat/base.html" %}
 {% block title %}{{ period_label(period) }} 棚卸{% endblock %}
 {% block content %}
-<div class="d-flex align-items-center gap-2 mb-1">
+<div class="d-flex align-items-center gap-2 mb-2">
   <h5 class="fw-bold mb-0"><i class="bi bi-clipboard-check"></i> 棚卸</h5>
-  <span class="ms-auto muted-small">
-    {% if is_week %}<a href="{{ url_for('meat.count', period=period[:7]) }}">月末の棚卸へ</a>
-    {% else %}<a href="{{ url_for('meat.count', period=meat_week) }}">今週の棚卸へ</a>{% endif %}
-  </span>
 </div>
-<div class="fw-semibold mb-1">{{ period_label(period) }}{{ '（毎週月曜の閉店後）' if is_week else '（月末）' }}</div>
+{# どの期間の棚卸かを選ぶ（さかのぼって入れられる） #}
+<div class="card p-2 mb-2">
+  <div class="d-flex gap-1 mb-2">
+    <a href="{{ url_for('meat.count', period=this_week) }}" class="btn btn-sm flex-fill fw-bold {{ 'btn-dark' if is_week else 'btn-outline-dark' }}">週次（月曜）</a>
+    <a href="{{ url_for('meat.count', period=period[:7] if is_week else this_month) }}" class="btn btn-sm flex-fill fw-bold {{ 'btn-dark' if not is_week else 'btn-outline-dark' }}">月末</a>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <a href="{{ url_for('meat.count', period=prev_p) }}" class="btn btn-outline-secondary fw-bold">‹ {{ '前の週' if is_week else '前の月' }}</a>
+    <div class="flex-fill text-center fw-bold">{{ period_label(period) }}<div class="muted-small">{{ '毎週月曜の閉店後' if is_week else '月末の閉店後' }}</div></div>
+    <a href="{{ url_for('meat.count', period=next_p) }}" class="btn btn-outline-secondary fw-bold">{{ '次の週' if is_week else '次の月' }} ›</a>
+  </div>
+  {% if not is_week %}
+  <div class="d-flex gap-1 flex-wrap mt-2">
+    {% for m in months|sort %}
+    <a href="{{ url_for('meat.count', period=m) }}" class="btn btn-sm {{ 'btn-primary' if m == period else 'btn-outline-primary' }}">{{ m[5:]|int }}月末</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% if is_past and not (head and head.status == 'confirmed') %}
+<div class="alert alert-warning py-2" style="font-size:.85rem">
+  <b>{{ period_label(period) }}の棚卸を、あとから入れています。</b>その時に量った重さを入れてください。
+  そのあと使い切った塊も並んでいます（「〇/〇に使い切り」）。
+  この期間のあとに量った・捌いた・使い切った塊は、確定しても<b>今の重さや状態は変えず</b>、この期間の棚卸の数字だけ残します。
+</div>
+{% endif %}
 <div class="muted-small mb-3">
   {% if head and head.status == 'confirmed' %}<span class="badge bg-success">確定済み</span> {{ head.counted_at or '' }} {{ head.staff_name or '' }}
   {% elif head %}<span class="badge bg-warning text-dark">入力中</span> {{ head.counted_at or '' }}
@@ -32,9 +53,10 @@
     {% set unopened = lot.status == 'received' %}
     <div class="card p-2 px-3 mb-2 {{ '' if unopened else 'border border-primary' }}" id="lotcard-{{ lot.id }}">
       <div class="d-flex justify-content-between muted-small">
-        <span><span class="badge badge-{{ lot.status }}">{{ '未開封' if unopened else '開封済み・量る' }}</span>
+        <span>{% if lot.used_after %}<span class="badge bg-secondary">{{ lot.used_after[5:]|replace('-', '/') }}に使い切り</span>
+              {% else %}<span class="badge badge-{{ lot.status }}">{{ '未開封' if unopened else '開封済み・量る' }}</span>{% endif %}
           {{ lot.sub_part_name or lot.label_item_name or '' }} #{{ lot.id }}</span>
-        <span>{{ 'ラベル' if unopened else '前回' }} {{ '%.2f'|format(lot.kg_now) }}kg</span>
+        <span>{{ 'ラベル' if unopened or lot.used_after else '前回' }} {{ '%.2f'|format(lot.kg_now) }}kg</span>
       </div>
       {# 箱のラベルと見比べやすいよう、個体識別番号の下4桁を太字にする #}
       <div class="num" style="font-size:.9rem">
