@@ -149,7 +149,7 @@ def lot_detail(lot_id):
 def lot_reclassify(lot_id):
     try:
         mdb.reclassify_lot(lot_id, request.form.get('part_id'), staff_name(), request.form.get('memo', '').strip())
-        flash('部位を分類しました（数量・金額・日付はそのまま。ウデモモの合計は変わりません）', 'success')
+        flash('部位を分類しました（塊の数量・金額・日付はそのまま。これからの棚卸はその部位の単価で数えます）', 'success')
     except (ValueError, TypeError) as e:
         flash(str(e) or '部位を選んでください', 'danger')
     return redirect(url_for('meat.lot_detail', lot_id=lot_id))

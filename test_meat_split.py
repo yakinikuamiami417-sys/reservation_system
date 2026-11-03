@@ -119,7 +119,11 @@ check(nov['ウデモモ']['sales_qty'] == 40, f'出数はウデモモに1回だ�
 
 # 棚卸の評価単価：3つとも同じ（ウデモモの最後の仕入単価）
 vp = mdb.valuation_prices('2026-11')
-check(vp[UDE] == vp[MOMO] == vp[UNC] == 4300, f'評価単価は3つとも「ウデモモ」の最後の仕入単価 4,300円: {vp[UDE]}, {vp[MOMO]}, {vp[UNC]}')
+check(vp[UNC] == 4300, f'部位未分類の評価単価＝自分の最後の仕入単価 4,300円（11/2）: {vp[UNC]}')
+check(vp[UDE] == vp[MOMO] == 4300, 'ウデ・モモに仕入の記録がまだ無い時は、ウデモモの最後の仕入単価（0円にしない）')
+check(mdb.valuation_prices('2026-10')[UNC] == 4200, '10月末の評価単価は10月までの仕入単価 4,200円（11/2 の分は入れない）')
+check(parts['ウデ']['min_stock_kg'] == 0 and parts['モモ']['min_stock_kg'] == 0 and
+      parts['ウデモモ（部位未分類）']['min_stock_kg'] == 0, '下限は部位ごとに 0kg から')
 
 # ---- ① ウデの入庫ではウデだけが増える ----
 s0 = mdb.stock_summary()
@@ -132,6 +136,8 @@ check(abs(p1['ウデ'] - p0['ウデ'] - 12.0) < 1e-9 and p1['モモ'] == p0['モ
       f'ウデを12kg納品：ウデだけ増える（ウデ {p0["ウデ"]}→{p1["ウデ"]}、モモ {p1["モモ"]} のまま）')
 pur = mdb.purchases_in_period('2026-11')
 check(pur.get(UDE, (0, 0))[0] == 12.0 and MOMO not in pur, '11月の仕入：ウデ 12kg、モモは無し')
+vp = mdb.valuation_prices('2026-11')
+check(vp[UDE] == 4400 and vp[UNC] == 4300, f'ウデを仕入れたら、ウデだけ自分の単価 4,400円（未分類は 4,300円のまま）: {vp[UDE]}, {vp[UNC]}')
 
 # ---- ② ウデ・モモ・未分類の合計＝ウデモモ ----
 g = {x['name']: x for x in s1['groups']}['ウデモモ']
@@ -155,7 +161,10 @@ b = {x['part_name']: x for x in nov2['breakdown']}
 check(b['モモ']['opening_kg'] == 16.4 and b['ウデモモ（部位未分類）']['opening_kg'] == 5.0,
       '内訳：10月末の L1 16.4kg がモモへ、まとめて量った 5.0kg は部位未分類のまま')
 g2 = {x['name']: x for x in mdb.stock_summary()['groups']}['ウデモモ']
-check((g2['total_kg'], g2['value']) == stock_before, '分類後も在庫の合計（kg・金額）は同じ')
+check((g2['total_kg'], g2['value']) == stock_before, '分類後も在庫の合計（kg・塊の金額）は同じ')
+vp2 = mdb.valuation_prices('2026-11')
+check(vp2[UDE] == 4400 and vp2[MOMO] == 4200,
+      f'分類後の評価単価は部位ごと（モモ＝L1の4,200円、ウデ＝最後の4,400円）: ウデ {vp2[UDE]}、モモ {vp2[MOMO]}')
 lines = q('SELECT kg, unit_price, amount FROM meat_stock_count_lines WHERE lot_id = :l', l=L1)
 check(lines == [(16.4, 4200, 68880)], '10月末の棚卸の数量・単価・金額は残る（部位だけ付け替え）')
 ev = mdb.get_lot(L1)['events'][-1]

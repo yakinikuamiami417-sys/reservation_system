@@ -307,7 +307,8 @@ def _split_udemomo():
         for t in SPLIT_BACKUP_TABLES:
             if insp.has_table(t) and not insp.has_table(SPLIT_BACKUP_PREFIX + t):
                 con.execute(text(f'CREATE TABLE {SPLIT_BACKUP_PREFIX}{t} AS SELECT * FROM {t}'))
-        con.execute(text('UPDATE meat_parts SET name = :n, cost_group = :g, sort_order = :o WHERE id = :id'),
+        # 下限は部位ごとに決める（今は0kg）。前のウデモモの10kgを残すと、未分類に警告が出続ける
+        con.execute(text('UPDATE meat_parts SET name = :n, cost_group = :g, sort_order = :o, min_stock_kg = 0 WHERE id = :id'),
                     {'n': UDEMOMO_UNCLASSIFIED, 'g': UDEMOMO_GROUP, 'o': old.sort_order + 2, 'id': old.id})
         new_ids = {}
         for i, name in enumerate(('ウデ', 'モモ')):
@@ -675,7 +676,7 @@ def stock_summary(expiry_warn_days=3):
         p['value'] += lot['value_now']
     rows = []
     groups = part_groups()
-    shared = {}   # 2部位以上の集計分類（ウデモモ）は、合計で下限を見る
+    shared = {}   # 2部位以上の集計分類（ウデモモ）は、合計も出す（下限は部位ごと）
     for p in parts.values():
         g = groups.get(p['id'], {})
         p['group'] = g.get('group', p['name'])
@@ -689,12 +690,11 @@ def stock_summary(expiry_warn_days=3):
             sg['sort_order'] = min(sg['sort_order'], p['sort_order'])
         p['expiring'] = [l for l in p['lots'] if l['days_left'] is not None and l['days_left'] <= expiry_warn_days]
         rows.append(p)
-    for sg in shared.values():
-        sg['is_low'] = sg['total_kg'] < sg['min_stock_kg']
     for p in rows:
-        sg = shared.get(p['group'])
-        p['group_info'] = sg
-        p['is_low'] = sg['is_low'] if sg else p['total_kg'] < (p['min_stock_kg'] or 0)
+        p['group_info'] = shared.get(p['group'])
+        p['is_low'] = p['total_kg'] < (p['min_stock_kg'] or 0)
+    for sg in shared.values():
+        sg['is_low'] = any(m['is_low'] for m in sg['members'])
     rows.sort(key=lambda p: (not p['is_low'], not p['expiring'], p['sort_order']))
     held = list_lots(('held',))
     return {
@@ -922,19 +922,23 @@ def valuation_prices(period):
             WHERE sl.slip_date < :end AND l.promised_unit_price IS NOT NULL
             ORDER BY sl.slip_date, l.id
         """), {'end': end}).all()
-    # 仕入の記録がまだ無い部位（使い始めの内臓など）は、在庫アプリの商品マスターの単価を使う
-    # ウデ・モモ・部位未分類は同じ「ウデモモ」の単価を使う（分類し直しても棚卸の金額が変わらないように）
+    # ウデ・モモは別々の単価（2026-11-03 社長：分類した時に棚卸の金額が動いてよい）。
+    # その部位に仕入の記録がまだ無い時は、同じ集計分類（ウデモモ）の最後の仕入単価。
+    # それも無い部位（使い始めの内臓など）は、在庫アプリの商品マスターの単価を使う
     parts = list_parts(include_inactive=True)
     groups = part_groups(parts)
-    by_group = {}
+    own, group_last = {}, {}
+    for r in rows:
+        own[r.part_id] = r.promised_unit_price
+        if r.part_id in groups:
+            group_last[groups[r.part_id]['group']] = r.promised_unit_price
+    prices = {}
     for p in parts:
         g = groups[p['id']]['group']
-        if DEFAULT_UNIT_PRICES.get(g):
-            by_group[g] = DEFAULT_UNIT_PRICES[g]
-    for r in rows:
-        if r.part_id in groups:
-            by_group[groups[r.part_id]['group']] = r.promised_unit_price
-    return {p['id']: by_group[groups[p['id']]['group']] for p in parts if groups[p['id']]['group'] in by_group}
+        price = own.get(p['id']) or group_last.get(g) or DEFAULT_UNIT_PRICES.get(p['name']) or DEFAULT_UNIT_PRICES.get(g)
+        if price:
+            prices[p['id']] = price
+    return prices
 
 
 # 在庫アプリ（inventory_system/seed_kirinya_items.py）の単価（円/kg）。テールは在庫アプリに無く社長に確認

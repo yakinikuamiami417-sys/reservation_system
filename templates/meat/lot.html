@@ -38,7 +38,7 @@
 {% if siblings and meat_is_admin and lot.status != 'cancelled' %}
 <div class="card p-3 mb-3 {{ 'border border-warning border-3' if '未分類' in lot.part_name }}">
   <div class="fw-semibold mb-1">{{ '部位を分類する' if '未分類' in lot.part_name else '部位を直す' }}
-    <span class="muted-small">（{{ group_name }} の中で付け替え。数量・金額・日付はそのまま）</span></div>
+    <span class="muted-small">（{{ group_name }} の中で付け替え。塊の数量・金額・日付はそのまま。これからの棚卸はその部位の単価で数えます）</span></div>
   {% if '未分類' in lot.part_name %}
   <div class="muted-small mb-2">前からの「ウデモモ」の記録です。現物かラベルを見て、ウデかモモかを選んでください。
     {% if lot.label_item_name or lot.sub_part_name %}ラベルの品名：<b>{{ lot.label_item_name or lot.sub_part_name }}</b>{% endif %}</div>
