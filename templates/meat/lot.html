@@ -35,6 +35,24 @@
   {% endif %}
 </div>
 
+{% if siblings and meat_is_admin and lot.status != 'cancelled' %}
+<div class="card p-3 mb-3 {{ 'border border-warning border-3' if '未分類' in lot.part_name }}">
+  <div class="fw-semibold mb-1">{{ '部位を分類する' if '未分類' in lot.part_name else '部位を直す' }}
+    <span class="muted-small">（{{ group_name }} の中で付け替え。数量・金額・日付はそのまま）</span></div>
+  {% if '未分類' in lot.part_name %}
+  <div class="muted-small mb-2">前からの「ウデモモ」の記録です。現物かラベルを見て、ウデかモモかを選んでください。
+    {% if lot.label_item_name or lot.sub_part_name %}ラベルの品名：<b>{{ lot.label_item_name or lot.sub_part_name }}</b>{% endif %}</div>
+  {% endif %}
+  <form method="post" action="{{ url_for('meat.lot_reclassify', lot_id=lot.id) }}" class="d-flex gap-2 flex-wrap"
+        onsubmit="return confirm('部位を付け替えますか？')">
+    {% for p in siblings %}
+    <button name="part_id" value="{{ p.id }}" class="btn btn-lg {{ 'btn-primary' if p.name in ('ウデ', 'モモ') else 'btn-outline-secondary' }} fw-bold flex-fill">
+      {{ p.name }}</button>
+    {% endfor %}
+  </form>
+</div>
+{% endif %}
+
 {% if lot.individual_no %}
 <div class="card p-3 mb-3">
   <div class="fw-semibold mb-2">個体情報</div>
@@ -137,7 +155,7 @@
 
 <div class="card p-3 mb-3">
   <div class="fw-semibold mb-2">履歴</div>
-  {% set names = {'promise': '目利き', 'receive': '納品', 'process': '捌き', 'weigh': '計量', 'consume': '使い切り', 'cancel': '取消', 'unreceive': '納品取消', 'edit': '修正'} %}
+  {% set names = {'promise': '目利き', 'receive': '納品', 'process': '捌き', 'weigh': '計量', 'consume': '使い切り', 'cancel': '取消', 'unreceive': '納品取消', 'edit': '修正', 'reclassify': '部位の分類'} %}
   {% for e in lot.events %}
   <div style="font-size:.85rem">{{ e.logged_at[:16] }}　<b>{{ names.get(e.event_type, e.event_type) }}</b>
     {% if e.kg is not none %}{{ e.kg }}kg{% endif %} {{ e.memo or '' }} <span class="muted-small">{{ e.staff_name or '' }}</span></div>

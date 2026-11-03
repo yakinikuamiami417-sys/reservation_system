@@ -74,7 +74,10 @@ check(cl.parse_result('<html>エラー</html>') is None, 'エラー画面は Non
 # ---- 品名の読み替え ----
 mdb.init_meat_db()
 parts = {p['name']: p['id'] for p in mdb.list_parts()}
-check(mdb.resolve_alias('和牛　芯玉')[0] == parts['ウデモモ'], '「和牛 芯玉」→ ウデモモ')
+# 2026-11-03 ウデとモモを分けた。前からの「ウデモモ」の記録は「ウデモモ（部位未分類）」に残る
+parts['ウデモモ'] = parts['ウデモモ（部位未分類）']
+check(mdb.resolve_alias('和牛　芯玉')[0] == parts['モモ'], '「和牛 芯玉」→ モモ（目利きの初期値）')
+check(mdb.resolve_alias('ミスジ')[0] == parts['ウデ'], '「ミスジ」→ ウデ（目利きの初期値）')
 check(mdb.resolve_alias('牛中バラ')[0] == parts['トモバラ'], '「牛中バラ」→ トモバラ')
 check(mdb.resolve_alias('牛カッパ') == (parts['トモバラ'], 'カッパ'), '「牛カッパ」→ トモバラ（カッパ）')
 check(mdb.resolve_alias('ネクタイ') == (None, None), '知らない品名は部位なし')
@@ -163,7 +166,7 @@ check(mdb.period_label('2026-11-02') == '10/27(火)〜11/2(月)の週', f'週の
 check(mdb._same_day_period('2026-11-30') == '2026-11' and mdb._same_day_period('2026-11') == '2026-11-30'
       and mdb._same_day_period('2026-11-09') is None, '11/30は月曜で月末：週次と月次で同じ棚卸を使う')
 weekly = {p['name']: p['count_weekly'] for p in mdb.list_parts()}
-check(weekly['ウデモモ'] == 1 and weekly['ホルモン'] == 0 and weekly['トリ'] == 0, '毎週量る部位と月末だけの部位')
+check(weekly['ウデ'] == 1 and weekly['モモ'] == 1 and weekly['ウデモモ（部位未分類）'] == 1 and weekly['ホルモン'] == 0 and weekly['トリ'] == 0, '毎週量る部位と月末だけの部位')
 
 vp = mdb.valuation_prices('2026-10')
 check(vp[parts['ミノ']] == 3700 and vp[parts['ウデモモ']] == 4200 and vp[parts['テール']] == 2000,

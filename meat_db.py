@@ -57,6 +57,17 @@ SEED_ALIASES = {
     'ヒレ': [('ヒレ', 'ヒレ'), ('ヘレ', 'ヒレ'), ('テンダーロイン', 'ヒレ')],
 }
 
+# ウデとモモを分ける（2026-11-03 社長）。在庫・仕入・棚卸は「ウデ」「モモ」別々、原価・出数は「ウデモモ」にまとめる。
+# 前からの「ウデモモ」の記録は、名前から推測して振り分けず「ウデモモ（部位未分類）」に残す（あとで1本ずつ分類できる）
+UDEMOMO_GROUP = 'ウデモモ'
+UDEMOMO_UNCLASSIFIED = 'ウデモモ（部位未分類）'
+# 目利きの時のラベル品名の読み替え（初期値）だけをウデ・モモに分ける。既存の塊には使わない
+UDE_SUB_PARTS = ('ウデ', 'ミスジ', 'ウデサンカク', 'トウガラシ')
+# 分ける直前に写し取る表（データベースの中に bk20261103_〇〇 として残る）
+SPLIT_BACKUP_TABLES = ('meat_parts', 'meat_part_aliases', 'meat_menu_map', 'meat_lots', 'meat_stock_count_lines',
+                       'meat_period_closings', 'meat_lot_events')
+SPLIT_BACKUP_PREFIX = 'bk20261103_'
+
 SEED_MENU_MAP = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'meat_seed_menu_map.json')
 
 
@@ -251,6 +262,8 @@ def init_meat_db():
         con.execute(text('CREATE INDEX IF NOT EXISTS idx_meat_events_lot ON meat_lot_events(lot_id)'))
     _seed()
     _add_weekly_column()
+    _add_cost_group_column()
+    _split_udemomo()
 
 
 # 週次の棚卸で量る部位（金額の大きい部位）。それ以外は月末だけ量る（2026-10-29 決定）
@@ -267,6 +280,50 @@ def _add_weekly_column():
     with engine.begin() as con:
         for name in MONTHLY_ONLY_PARTS:
             con.execute(text('UPDATE meat_parts SET count_weekly = 0 WHERE name = :n'), {'n': name})
+
+
+def _add_cost_group_column():
+    """meat_parts に cost_group（原価・出数をまとめる集計分類。空なら部位名そのもの）を足す"""
+    try:
+        with engine.begin() as con:
+            con.execute(text('ALTER TABLE meat_parts ADD COLUMN cost_group TEXT'))
+    except Exception:
+        pass   # 既にある
+
+
+def _split_udemomo():
+    """「ウデモモ」を ウデ・モモ・ウデモモ（部位未分類） に分ける（1回だけ）。
+    既存の部位の行は番号を変えず名前だけ「部位未分類」にするので、塊・棚卸・締めの記録は1件も動かない。
+    直す前に関係する表を丸ごと写し取る（同じトランザクション内。失敗したら全部元に戻る）"""
+    from sqlalchemy import inspect
+    with engine.begin() as con:
+        names = {r.name: r for r in con.execute(text('SELECT * FROM meat_parts'))}
+        if 'ウデ' in names and 'モモ' in names:
+            return
+        old = names.get(UDEMOMO_GROUP)
+        if old is None:
+            return
+        insp = inspect(con)
+        for t in SPLIT_BACKUP_TABLES:
+            if insp.has_table(t) and not insp.has_table(SPLIT_BACKUP_PREFIX + t):
+                con.execute(text(f'CREATE TABLE {SPLIT_BACKUP_PREFIX}{t} AS SELECT * FROM {t}'))
+        con.execute(text('UPDATE meat_parts SET name = :n, cost_group = :g, sort_order = :o WHERE id = :id'),
+                    {'n': UDEMOMO_UNCLASSIFIED, 'g': UDEMOMO_GROUP, 'o': old.sort_order + 2, 'id': old.id})
+        new_ids = {}
+        for i, name in enumerate(('ウデ', 'モモ')):
+            con.execute(text("""
+                INSERT INTO meat_parts (name, category, default_supplier_id, min_stock_kg, sort_order, is_active,
+                                        count_weekly, cost_group)
+                VALUES (:n, :c, :s, 0, :o, 1, :w, :g)
+            """), {'n': name, 'c': old.category, 's': old.default_supplier_id, 'o': old.sort_order + i,
+                   'w': getattr(old, 'count_weekly', 1), 'g': UDEMOMO_GROUP})
+            new_ids[name] = con.execute(text('SELECT id FROM meat_parts WHERE name = :n'), {'n': name}).scalar()
+        # 目利きの時の自動の部位（全業者共通の初期値だけ）。人が覚えさせた読み替えは触らない
+        for a in con.execute(text("""SELECT id, sub_part_name FROM meat_part_aliases
+                                     WHERE part_id = :p AND processor_name = ''"""), {'p': old.id}).all():
+            target = 'ウデ' if a.sub_part_name in UDE_SUB_PARTS else 'モモ'
+            con.execute(text('UPDATE meat_part_aliases SET part_id = :t WHERE id = :id'),
+                        {'t': new_ids[target], 'id': a.id})
 
 
 def _seed():
@@ -306,10 +363,35 @@ def _seed():
 # ============================================================
 # マスタ
 # ============================================================
-def list_parts():
+def list_parts(include_inactive=False):
     with engine.begin() as con:
         return [dict(r) for r in con.execute(text(
-            'SELECT * FROM meat_parts WHERE is_active = 1 ORDER BY sort_order')).mappings()]
+            'SELECT * FROM meat_parts' + ('' if include_inactive else ' WHERE is_active = 1') +
+            ' ORDER BY sort_order')).mappings()]
+
+
+def entry_parts():
+    """目利きで選ぶ部位。「部位未分類」は前からの記録の置き場なので、新しくは選ばせない"""
+    return [p for p in list_parts() if p['name'] != UDEMOMO_UNCLASSIFIED]
+
+
+def group_name(part):
+    return part.get('cost_group') or part['name']
+
+
+def part_groups(parts=None):
+    """部位 → 集計分類。{part_id: {'group': 'ウデモモ', 'rep': 代表の部位id, 'members': [id,...]}}
+    代表＝その分類で一番古い部位（ウデモモなら前からの行）。原価の締め・グラム表はこの番号で持つ"""
+    parts = parts if parts is not None else list_parts(include_inactive=True)
+    by_group = {}
+    for p in parts:
+        by_group.setdefault(group_name(p), []).append(p)
+    out = {}
+    for g, ps in by_group.items():
+        rep_id = min(p['id'] for p in ps)
+        for p in ps:
+            out[p['id']] = {'group': g, 'rep': rep_id, 'members': sorted(x['id'] for x in ps)}
+    return out
 
 
 def list_suppliers():
@@ -361,18 +443,30 @@ def learn_alias(label_name, processor_name, part_id):
 
 
 def last_unit_price(part_id):
-    """部位の直近の単価（目利き画面の初期値用）"""
+    """部位の直近の単価（目利き画面の初期値用）。ウデ・モモに記録が無ければ「ウデモモ」の直近の単価"""
+    members = part_groups().get(part_id, {}).get('members') or [part_id]
+    keys = ','.join(f':m{i}' for i in range(len(members)))
     with engine.begin() as con:
-        return con.execute(text("""
+        own = con.execute(text("""
             SELECT promised_unit_price FROM meat_lots
             WHERE part_id = :p AND promised_unit_price IS NOT NULL AND status != 'cancelled'
             ORDER BY id DESC LIMIT 1
         """), {'p': part_id}).scalar()
+        if own is not None:
+            return own
+        return con.execute(text(f"""
+            SELECT promised_unit_price FROM meat_lots
+            WHERE part_id IN ({keys}) AND promised_unit_price IS NOT NULL AND status != 'cancelled'
+            ORDER BY id DESC LIMIT 1
+        """), {f'm{i}': m for i, m in enumerate(members)}).scalar()
 
 
 def set_menu_parts(menu_name, parts_grams):
     """メニューの部位とグラム数を入れ替える。parts_grams: {部位名: g}"""
-    ids = {p['name']: p['id'] for p in list_parts()}
+    parts = list_parts()
+    groups = part_groups(parts)
+    ids = {p['name']: groups[p['id']]['rep'] for p in parts}
+    ids.update({g['group']: g['rep'] for g in groups.values()})   # 「ウデモモ」で指定できる
     with engine.begin() as con:
         con.execute(text('DELETE FROM meat_menu_map WHERE menu_name = :m'), {'m': menu_name})
         for part, g in parts_grams.items():
@@ -381,12 +475,20 @@ def set_menu_parts(menu_name, parts_grams):
 
 
 def list_menu_map():
+    """グラム表。部位は集計分類（ウデモモ）で返す：同じ販売数をウデとモモの両方に足さないため"""
     with engine.begin() as con:
-        return [dict(r) for r in con.execute(text("""
+        rows = [dict(r) for r in con.execute(text("""
             SELECT m.*, p.name AS part_name FROM meat_menu_map m
             JOIN meat_parts p ON p.id = m.part_id
             ORDER BY m.menu_name, p.sort_order
         """)).mappings()]
+    groups = part_groups()
+    for r in rows:
+        g = groups.get(r['part_id'])
+        if g:
+            r['part_id'] = g['rep']
+            r['part_name'] = g['group']
+    return rows
 
 
 # ============================================================
@@ -572,14 +674,32 @@ def stock_summary(expiry_warn_days=3):
         p['total_kg'] += lot['kg_now']
         p['value'] += lot['value_now']
     rows = []
+    groups = part_groups()
+    shared = {}   # 2部位以上の集計分類（ウデモモ）は、合計で下限を見る
     for p in parts.values():
-        p['is_low'] = p['total_kg'] < (p['min_stock_kg'] or 0)
+        g = groups.get(p['id'], {})
+        p['group'] = g.get('group', p['name'])
+        if len(g.get('members', [])) > 1:
+            sg = shared.setdefault(p['group'], {'name': p['group'], 'total_kg': 0.0, 'value': 0, 'min_stock_kg': 0.0,
+                                                'members': [], 'sort_order': p['sort_order']})
+            sg['total_kg'] += p['total_kg']
+            sg['value'] += p['value']
+            sg['min_stock_kg'] += p['min_stock_kg'] or 0
+            sg['members'].append(p)
+            sg['sort_order'] = min(sg['sort_order'], p['sort_order'])
         p['expiring'] = [l for l in p['lots'] if l['days_left'] is not None and l['days_left'] <= expiry_warn_days]
         rows.append(p)
+    for sg in shared.values():
+        sg['is_low'] = sg['total_kg'] < sg['min_stock_kg']
+    for p in rows:
+        sg = shared.get(p['group'])
+        p['group_info'] = sg
+        p['is_low'] = sg['is_low'] if sg else p['total_kg'] < (p['min_stock_kg'] or 0)
     rows.sort(key=lambda p: (not p['is_low'], not p['expiring'], p['sort_order']))
     held = list_lots(('held',))
     return {
         'parts': rows,
+        'groups': sorted(shared.values(), key=lambda g: g['sort_order']),
         'held': held,
         'total_kg': sum(p['total_kg'] for p in rows),
         'total_value': sum(p['value'] for p in rows),
@@ -646,6 +766,31 @@ def lots_in_house_for_count(period):
     """棚卸の対象：店内にある塊のうち、その期間の終わりまでに納品されたものだけ"""
     _, end = period_bounds(period)
     return [l for l in list_lots(IN_HOUSE) if not l.get('received_on') or l['received_on'][:10] < end]
+
+
+def reclassify_lot(lot_id, new_part_id, staff, memo=''):
+    """部位未分類の塊を ウデ／モモ に分ける（同じ集計分類の中だけ）。
+    数量・金額・日付は変えない。棚卸の行の部位も一緒に付け替えるので、ウデモモの合計は変わらない"""
+    groups = part_groups()
+    with engine.begin() as con:
+        lot = con.execute(text('SELECT id, part_id, status FROM meat_lots WHERE id = :id'), {'id': lot_id}).first()
+        if not lot:
+            raise ValueError('塊が見つかりません')
+        if lot.status == 'cancelled':
+            raise ValueError('取り消した塊は分類できません')
+        new_part_id = int(new_part_id)
+        if new_part_id == lot.part_id:
+            return
+        g_old, g_new = groups.get(lot.part_id), groups.get(new_part_id)
+        if not g_old or not g_new or g_old['group'] != g_new['group']:
+            raise ValueError('同じ集計分類（例：ウデモモ）の中でしか分類し直せません')
+        names = {r.id: r.name for r in con.execute(text('SELECT id, name FROM meat_parts'))}
+        con.execute(text('UPDATE meat_lots SET part_id = :p, updated_at = :t WHERE id = :id'),
+                    {'p': new_part_id, 't': _now(), 'id': lot_id})
+        con.execute(text('UPDATE meat_stock_count_lines SET part_id = :p WHERE lot_id = :id'),
+                    {'p': new_part_id, 'id': lot_id})
+        _event(con, lot_id, 'reclassify', lot.status, lot.status, None, staff,
+               ' '.join(x for x in (f'{names[lot.part_id]} → {names[new_part_id]}', memo) if x))
 
 
 def process_lot(lot_id, input_kg, product_kg, trim_kg, loss_kg, staff, memo=''):
@@ -778,11 +923,18 @@ def valuation_prices(period):
             ORDER BY sl.slip_date, l.id
         """), {'end': end}).all()
     # 仕入の記録がまだ無い部位（使い始めの内臓など）は、在庫アプリの商品マスターの単価を使う
-    names = {p['id']: p['name'] for p in list_parts()}
-    prices = {pid: DEFAULT_UNIT_PRICES[n] for pid, n in names.items() if DEFAULT_UNIT_PRICES.get(n)}
+    # ウデ・モモ・部位未分類は同じ「ウデモモ」の単価を使う（分類し直しても棚卸の金額が変わらないように）
+    parts = list_parts(include_inactive=True)
+    groups = part_groups(parts)
+    by_group = {}
+    for p in parts:
+        g = groups[p['id']]['group']
+        if DEFAULT_UNIT_PRICES.get(g):
+            by_group[g] = DEFAULT_UNIT_PRICES[g]
     for r in rows:
-        prices[r.part_id] = r.promised_unit_price
-    return prices
+        if r.part_id in groups:
+            by_group[groups[r.part_id]['group']] = r.promised_unit_price
+    return {p['id']: by_group[groups[p['id']]['group']] for p in parts if groups[p['id']]['group'] in by_group}
 
 
 # 在庫アプリ（inventory_system/seed_kirinya_items.py）の単価（円/kg）。テールは在庫アプリに無く社長に確認
@@ -926,6 +1078,10 @@ def compute_closing(period):
         """), {'p': period}).mappings()]
         sales = [dict(r) for r in con.execute(text(
             'SELECT menu_name, qty, amount FROM meat_menu_sales WHERE period = :p'), {'p': period}).mappings()]
+    groups = part_groups()
+    for r in saved:   # 締めは代表の部位の番号で持っている → 集計分類の名前で出す
+        if r['part_id'] in groups:
+            r['part_name'] = groups[r['part_id']]['group']
     menu_map = list_menu_map()
     menu_names = sorted({m['menu_name'] for m in menu_map})
 
@@ -959,21 +1115,38 @@ def compute_closing(period):
         closing = _count_totals(period, confirmed_only=False) or {}
         purchases = purchases_in_period(period)
         rows = []
-        for p in list_parts():
-            if is_week(period) and not p.get('count_weekly', 1):
+        all_parts = {p['id']: p for p in list_parts(include_inactive=True)}
+        active = [p for p in list_parts() if groups.get(p['id'])]
+        seen = []
+        for p in active:
+            if groups[p['id']]['rep'] not in seen:
+                seen.append(groups[p['id']]['rep'])
+        for pid in seen:
+            g = groups[pid]
+            members = [all_parts[m] for m in g['members']]
+            if is_week(period) and not any(m.get('count_weekly', 1) for m in members):
                 continue   # 月末だけ量る部位は、週次の原価には出さない
-            pid = p['id']
-            ok, oa = opening.get(pid, (0.0, 0))
-            pk, pa = purchases.get(pid, (0.0, 0))
-            ck, ca = closing.get(pid, (0.0, 0))
+            # 前繰・仕入・棚卸は部位ごとの記録を、集計分類で足す（同じ記録を2回足さない）
+            def total(src):
+                return (sum(src.get(m['id'], (0.0, 0))[0] for m in members),
+                        sum(src.get(m['id'], (0.0, 0))[1] for m in members))
+            ok, oa = total(opening)
+            pk, pa = total(purchases)
+            ck, ca = total(closing)
             if not any((ok, oa, pk, pa, ck, ca, sales_qty.get(pid))):
                 continue
+            breakdown = [{'part_name': m['name'],
+                          'opening_kg': opening.get(m['id'], (0.0, 0))[0], 'opening_amount': opening.get(m['id'], (0.0, 0))[1],
+                          'purchase_kg': purchases.get(m['id'], (0.0, 0))[0], 'purchase_amount': purchases.get(m['id'], (0.0, 0))[1],
+                          'closing_kg': closing.get(m['id'], (0.0, 0))[0], 'closing_amount': closing.get(m['id'], (0.0, 0))[1]}
+                         for m in sorted(members, key=lambda x: x['sort_order'])] if len(members) > 1 else []
             usage_amount = oa + pa - ca
             usage_kg = ok + pk - ck
             qty = sales_qty.get(pid, 0)
             theoretical_kg = theo_g.get(pid, 0) / 1000
             rows.append({
-                'period': period, 'part_id': pid, 'part_name': p['name'], 'sort_order': p['sort_order'],
+                'period': period, 'part_id': pid, 'part_name': g['group'], 'breakdown': breakdown,
+                'sort_order': min(m['sort_order'] for m in members),
                 'opening_amount': oa, 'purchase_amount': pa, 'closing_amount': ca, 'usage_amount': usage_amount,
                 'opening_kg': ok, 'purchase_kg': pk, 'closing_kg': ck, 'usage_kg': usage_kg,
                 'sales_qty': qty,

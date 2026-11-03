@@ -134,8 +134,25 @@ def lot_detail(lot_id):
     lot = mdb.get_lot(lot_id)
     if not lot:
         abort(404)
-    return render_template('meat/lot.html', lot=lot, parts=mdb.list_parts(),
-                           nlbc_url=cattle_lookup.SEARCH_URL)
+    groups = mdb.part_groups()
+    parts = mdb.list_parts()
+    g = groups.get(lot['part_id'], {})
+    # 同じ集計分類の中で付け替えられる部位（ウデモモ：ウデ・モモ・部位未分類）
+    siblings = [p for p in parts if p['id'] in g.get('members', []) and p['id'] != lot['part_id']] \
+        if len(g.get('members', [])) > 1 else []
+    return render_template('meat/lot.html', lot=lot, parts=parts, siblings=siblings,
+                           group_name=g.get('group'), nlbc_url=cattle_lookup.SEARCH_URL)
+
+
+@bp.route('/lot/<int:lot_id>/reclassify', methods=['POST'])
+@admin_required
+def lot_reclassify(lot_id):
+    try:
+        mdb.reclassify_lot(lot_id, request.form.get('part_id'), staff_name(), request.form.get('memo', '').strip())
+        flash('部位を分類しました（数量・金額・日付はそのまま。ウデモモの合計は変わりません）', 'success')
+    except (ValueError, TypeError) as e:
+        flash(str(e) or '部位を選んでください', 'danger')
+    return redirect(url_for('meat.lot_detail', lot_id=lot_id))
 
 
 @bp.route('/photo/<int:photo_id>')
@@ -190,7 +207,7 @@ def new_lots():
             return redirect(url_for('meat.new_lots', supplier=supplier_name))
         return redirect(url_for('meat.index', tab='held'))
     last_prices = {p['id']: mdb.last_unit_price(p['id']) for p in parts}
-    return render_template('meat/new.html', parts=parts, suppliers=suppliers, last_prices=last_prices,
+    return render_template('meat/new.html', parts=mdb.entry_parts(), suppliers=suppliers, last_prices=last_prices,
                            today=_today(), supplier=request.args.get('supplier', ''),
                            reader_ready=label_reader.is_configured())
 
@@ -404,6 +421,13 @@ def count(period):
             forgot = [f'{l["part_name"]} #{l["id"]}' for l in mdb.list_lots(('processed',))
                       if l['id'] not in missing and l['part_id'] not in counted_parts
                       and f'lot_{l["id"]}' in f]
+            blank = [f'{l["part_name"]} #{l["id"]}' for l in mdb.list_lots(('received',))
+                     if l['id'] not in missing and f'lot_{l["id"]}' in f and not f.get(f'lot_{l["id"]}', '').strip()]
+            if blank:
+                mdb.save_count(period, lines, staff_name())
+                flash('重さが空欄の未開封の箱があります：' + '、'.join(blank) +
+                      '。空欄は0kgとして数えません。重さを入れるか、無ければ「無い」にしてください（一時保存しました）', 'warning')
+                return redirect(url_for('meat.count', period=period))
             if forgot:
                 mdb.save_count(period, lines, staff_name())
                 flash('開けた塊の重さが入っていません：' + '、'.join(forgot) +

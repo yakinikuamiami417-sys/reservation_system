@@ -60,7 +60,7 @@
         <label class="muted-small">部位</label>
         <select class="form-select" data-f="part_id">
           <option value="">選んでください</option>
-          {% for p in parts %}<option value="{{ p.id }}" data-price="{{ last_prices[p.id] or '' }}">{{ p.name }}</option>{% endfor %}
+          {% for p in parts %}<option value="{{ p.id }}" data-price="{{ last_prices[p.id] or '' }}">{{ p.name }}{% if p.cost_group and p.cost_group != p.name %}　（{{ p.cost_group }}）{% endif %}</option>{% endfor %}
         </select>
       </div>
       <div class="col-3">

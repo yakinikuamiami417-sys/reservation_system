@@ -76,6 +76,15 @@
           {% if pl is not none and row.loss_rate is not none %}<br><span class="text-muted">前{{ unit }} {{ '%.1f'|format(pl * 100) }}%</span>{% endif %}
         </td>
       </tr>
+      {% for b in row.breakdown or [] %}
+      <tr class="text-muted" style="font-size:.74rem">
+        <td class="ps-3">└ {{ b.part_name }}</td>
+        <td class="text-end">{{ '{:,}'.format(b.opening_amount) }}<br>{{ '%.1f'|format(b.opening_kg) }}kg</td>
+        <td class="text-end">{{ '{:,}'.format(b.purchase_amount) }}<br>{{ '%.1f'|format(b.purchase_kg) }}kg</td>
+        <td class="text-end">{{ '{:,}'.format(b.closing_amount) }}<br>{{ '%.1f'|format(b.closing_kg) }}kg</td>
+        <td colspan="4" class="text-start">出数・原価は{{ row.part_name }}でまとめて計算</td>
+      </tr>
+      {% endfor %}
     {% else %}
       <tr><td colspan="8" class="text-muted">まだ数字がありません</td></tr>
     {% endfor %}
