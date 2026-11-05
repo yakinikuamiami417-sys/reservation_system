@@ -80,23 +80,30 @@
   {% endfor %}
 
   <div class="fw-bold mt-4 mb-1">一覧に無い分（捌いた肉を部位ごとにまとめて量った分・端材など）</div>
-  {% set extra_rows = extras + [{}, {}, {}] %}
-  <input type="hidden" name="extra_count" value="{{ extra_rows|length }}">
-  {% for e in extra_rows %}
+  {% macro extra_row(i, e, parts, locked) %}
   <div class="d-flex gap-2 mb-2">
-    <select name="extra_{{ loop.index0 }}_part" class="form-select" {{ 'disabled' if locked }}>
+    <select name="extra_{{ i }}_part" class="form-select" {{ 'disabled' if locked }}>
       <option value="">部位</option>
       {% for p in parts %}<option value="{{ p.id }}" {{ 'selected' if e.part_id == p.id }}>{{ p.name }}</option>{% endfor %}
     </select>
-    <select name="extra_{{ loop.index0 }}_state" class="form-select" style="max-width:7rem" {{ 'disabled' if locked }}>
+    <select name="extra_{{ i }}_state" class="form-select" style="max-width:7rem" {{ 'disabled' if locked }}>
       <option value="product" {{ 'selected' if e.state != 'raw' }}>商品化</option>
       <option value="raw" {{ 'selected' if e.state == 'raw' }}>原料</option>
     </select>
-    <input name="extra_{{ loop.index0 }}_kg" class="form-control num" inputmode="decimal" placeholder="kg"
+    <input name="extra_{{ i }}_kg" class="form-control num" inputmode="decimal" placeholder="kg"
            style="max-width:6rem" value="{{ e.kg or '' }}" {{ 'disabled' if locked }}>
   </div>
-  {% endfor %}
-  <div class="muted-small mb-2">捌いた肉を部位ごとにまとめて量った時は、その塊の欄は空けたままで、ここに合計を入れてください。</div>
+  {% endmacro %}
+  {% set extra_rows = extras + [{}, {}, {}] %}
+  <input type="hidden" name="extra_count" id="extra-count" value="{{ extra_rows|length }}">
+  <div id="extra-rows">
+    {% for e in extra_rows %}{{ extra_row(loop.index0, e, parts, locked) }}{% endfor %}
+  </div>
+  {% if meat_is_admin and not locked %}
+  <template id="extra-row-template">{{ extra_row('__i__', {}, parts, false) }}</template>
+  <button type="button" class="btn btn-outline-primary w-100 mb-2" onclick="addExtraRow()"><i class="bi bi-plus-lg"></i> 欄を追加</button>
+  {% endif %}
+  <div class="muted-small mb-2">捌いた肉を部位ごとにまとめて量った時は、その塊の欄は空けたままで、ここに合計を入れてください。要らなくなった欄は、kgを空にして保存すると消えます。</div>
 
   <div class="alert alert-light border mt-3" style="font-size:.82rem">
     評価単価は、その部位の最後の仕入単価（最終仕入原価法）です。
@@ -118,6 +125,17 @@
 {% block bottom %}{% endblock %}
 {% block scripts %}
 <script>
+// 「一覧に無い分」の欄を増やす（読み直さないので、入力中の重さは消えない）
+function addExtraRow() {
+  const count = document.getElementById('extra-count');
+  const i = Number(count.value);
+  const html = document.getElementById('extra-row-template').innerHTML.replaceAll('__i__', i);
+  const rows = document.getElementById('extra-rows');
+  rows.insertAdjacentHTML('beforeend', html);
+  count.value = i + 1;
+  rows.lastElementChild.querySelector('select').focus();
+}
+
 // ページを読み直さずに戻すので、入力中の重さは消えない
 async function backToHeld(id, btn) {
   const card = document.getElementById('lotcard-' + id);

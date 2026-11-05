@@ -292,6 +292,30 @@ c_ = mdb.get_cattle('1463224934')
 check('月齢 29か月' in h and (c_['producer_name'] or '（氏名の公表なし）') in h, '納品の画面に月齢・生産者が出る')
 check('まだ照会していません' in h, '未照会の番号はその旨を出す')
 
+# ---- 棚卸の「一覧に無い分」：欄を追加できる ----
+h = client.get('/meat/count/2027-03').get_data(as_text=True)
+check('欄を追加' in h and 'id="extra-row-template"' in h and 'extra___i___kg' in h, '棚卸の画面：欄を追加のボタンとひな形がある')
+check('name="extra_count" id="extra-count" value="3"' in h, '何も入れていなければ空き欄は3つ')
+res = client.post('/meat/count/2027-03', data={
+    'action': 'save', 'extra_count': '6',
+    'extra_0_part': str(parts['ミノ']), 'extra_0_state': 'raw', 'extra_0_kg': '1.5',
+    # 追加した欄（4つ目より後）も保存され、同じ部位の行は足し算される
+    'extra_5_part': str(parts['ミノ']), 'extra_5_state': 'product', 'extra_5_kg': '0.25',
+    # kgが空の欄は保存しない
+    'extra_4_part': str(parts['クラシタ']), 'extra_4_state': 'raw', 'extra_4_kg': ''})
+check(res.status_code == 302, '欄を増やして保存できる')
+saved_extras = [ln for ln in mdb.get_count('2027-03')['lines'] if not ln['lot_id']]
+check(sorted(ln['kg'] for ln in saved_extras) == [0.25, 1.5], '追加した欄も保存され、kgが空の欄は消える')
+check(mdb._count_totals('2027-03', confirmed_only=False)[parts['ミノ']][0] == 1.75, '同じ部位の行は合計される')
+h = client.get('/meat/count/2027-03').get_data(as_text=True)
+check('name="extra_count" id="extra-count" value="5"' in h, '読み直すと保存した2行＋空き3つ')
+client.post('/meat/count/2027-03', data={
+    'action': 'confirm', 'extra_count': '1',
+    'extra_0_part': str(parts['ミノ']), 'extra_0_state': 'raw', 'extra_0_kg': '1.5'})
+check(mdb.get_count('2027-03')['status'] == 'confirmed', '（前提）確定できた')
+h = client.get('/meat/count/2027-03').get_data(as_text=True)
+check('id="extra-row-template"' not in h and '欄を追加' not in h, '確定済みの棚卸には欄を追加のボタンを出さない')
+
 from database import engine
 engine.dispose()
 try:
