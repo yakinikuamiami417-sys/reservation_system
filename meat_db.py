@@ -253,6 +253,15 @@ def init_meat_db():
             confirmed_by     TEXT,
             PRIMARY KEY (period, part_id)
         )""",
+        # 締めを解除した記録。解除前の数字（snapshot：JSON）も残す
+        f"""CREATE TABLE IF NOT EXISTS meat_closing_reopens (
+            {pk},
+            period       TEXT NOT NULL,
+            reason       TEXT NOT NULL,
+            staff_name   TEXT,
+            reopened_at  TEXT NOT NULL,
+            snapshot     TEXT NOT NULL
+        )""",
     ]
     with engine.begin() as con:
         for ddl in ddls:
@@ -1072,7 +1081,7 @@ def unlock_count(period):
     with engine.begin() as con:
         if con.execute(text('SELECT COUNT(*) FROM meat_period_closings WHERE period = :p AND confirmed_at IS NOT NULL'),
                        {'p': period}).scalar():
-            raise ValueError(f'{period} は締め済みのため、棚卸を戻せません')
+            raise ValueError(f'{period} は締め済みのため、棚卸を戻せません。先に原価の画面で「締めを解除」してください')
         con.execute(text("UPDATE meat_stock_counts SET status = 'draft' WHERE period = :p"), {'p': period})
 
 
@@ -1246,6 +1255,42 @@ def compute_closing(period):
         'total': {k: sum(r[k] for r in rows) for k in
                   ('opening_amount', 'purchase_amount', 'closing_amount', 'usage_amount')},
     }
+
+
+def _closed_rows(con, period):
+    return [dict(r) for r in con.execute(text(
+        'SELECT * FROM meat_period_closings WHERE period = :p AND confirmed_at IS NOT NULL ORDER BY part_id'),
+        {'p': period}).mappings()]
+
+
+def reopen_closing(period, staff, reason):
+    """締めを解除する：解除前の数字と理由を記録してから、保存した数字を消す（原価はまた計算中に戻る）。
+    この期間の棚卸は次の期間の前繰になるので、次の期間が締め済みの間は解除しない（新しい方から順に解除する）"""
+    reason = (reason or '').strip()
+    if not reason:
+        raise ValueError('解除の理由を入れてください')
+    with engine.begin() as con:
+        rows = _closed_rows(con, period)
+        if not rows:
+            raise ValueError(f'{period_label(period)} は締められていません')
+        nxt = next_period(period)
+        if _closed_rows(con, nxt):
+            raise ValueError(f'次の期間（{period_label(nxt)}）が締め済みです。先にそちらを解除してください')
+        con.execute(text("""
+            INSERT INTO meat_closing_reopens (period, reason, staff_name, reopened_at, snapshot)
+            VALUES (:p, :r, :s, :t, :snap)
+        """), {'p': period, 'r': reason, 's': staff, 't': _now(),
+               'snap': json.dumps(rows, ensure_ascii=False, default=str)})
+        con.execute(text('DELETE FROM meat_period_closings WHERE period = :p'), {'p': period})
+
+
+def list_closing_reopens(period):
+    """締めを解除した記録（新しい順）"""
+    with engine.begin() as con:
+        return [dict(r) for r in con.execute(text("""
+            SELECT id, reason, staff_name, reopened_at FROM meat_closing_reopens
+            WHERE period = :p ORDER BY id DESC
+        """), {'p': period}).mappings()]
 
 
 def confirm_closing(period, staff):

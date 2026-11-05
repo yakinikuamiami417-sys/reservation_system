@@ -137,10 +137,32 @@
   </details>
 </div>
 
-<form method="post" onsubmit="return confirm('{{ period_label(period) }} を締めますか？締めた後は数字が変わらなくなります')">
+<form method="post" onsubmit="return confirm('{{ period_label(period) }} を締めますか？締めた後は数字が変わらなくなります（直す時は「締めを解除」）')">
   <input type="hidden" name="action" value="confirm">
   <button class="btn btn-danger w-100 fw-bold" {{ 'disabled' if not r.status.count_confirmed }}>この{{ unit }}を締める</button>
 </form>
+{% endif %}
+
+{% if meat_is_admin and r.status.closed %}
+<div class="card p-3 mb-3">
+  <div class="fw-semibold mb-1">締めを解除する</div>
+  <div class="muted-small mb-2">間違いを直す時に使います。解除前の数字と理由は記録に残ります。
+    この{{ unit }}の棚卸を直すと、{{ period_label(next_period) }}の前繰も変わるので、そちらの原価も見直してください。</div>
+  <form method="post" onsubmit="return confirm('{{ period_label(period) }} の締めを解除しますか？')">
+    <input type="hidden" name="action" value="reopen">
+    <input name="reason" class="form-control mb-2" placeholder="理由（必ず入れてください）例：ウデの伝票日付の間違い" required>
+    <button class="btn btn-outline-danger w-100 fw-bold">締めを解除する</button>
+  </form>
+</div>
+{% endif %}
+
+{% if reopens %}
+<div class="card p-3 mb-3" style="font-size:.85rem">
+  <div class="fw-semibold mb-1">締めを解除した記録</div>
+  {% for x in reopens %}
+  <div>{{ x.reopened_at }}　{{ x.staff_name or '' }}：{{ x.reason }}</div>
+  {% endfor %}
+</div>
 {% endif %}
 {% endblock %}
 {% block bottom %}{% endblock %}

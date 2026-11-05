@@ -550,6 +550,12 @@ def closing(period):
                 flash(f'{mdb.period_label(period)} を締めました', 'success')
             except ValueError as e:
                 flash(str(e), 'danger')
+        elif action == 'reopen':
+            try:
+                mdb.reopen_closing(period, staff_name(), request.form.get('reason'))
+                flash(f'{mdb.period_label(period)} の締めを解除しました。直したら、もう一度締めてください', 'success')
+            except ValueError as e:
+                flash(str(e), 'danger')
         return redirect(url_for('meat.closing', period=period))
     if not _valid_period(period):
         abort(404)
@@ -560,7 +566,8 @@ def closing(period):
     prev_menu = {m['menu_name']: m['cost'] for m in prev['menus'] if m['complete'] and m['cost']}
     return render_template('meat/closing.html', r=result, period=period, prev_period=mdb.prev_period(period),
                            next_period=mdb.next_period(period), is_week=mdb.is_week(period),
-                           prev_cost=prev_cost, prev_loss=prev_loss, prev_menu=prev_menu)
+                           prev_cost=prev_cost, prev_loss=prev_loss, prev_menu=prev_menu,
+                           reopens=mdb.list_closing_reopens(period))
 
 
 @bp.route('/menus')

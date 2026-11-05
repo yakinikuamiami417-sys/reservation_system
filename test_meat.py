@@ -337,6 +337,58 @@ amounts = {ln['part_name']: ln['amount'] for ln in mdb.get_count('2027-04')['lin
 check(amounts == {'ブタカタ': 6500, 'ウインナー': 822, 'ハム': 596, 'ベーコン': 298}, f'棚卸金額＝数量×単価 {amounts}')
 check(client.get('/meat/').status_code == 200 and client.get('/meat/closing/2027-04').status_code == 200, '在庫・原価の画面が開く')
 
+# ---- 締めを解除 ----
+import json
+import meat as meat_module
+pid_buta = added['ブタカタ']['id']
+def count_and_close(period, kg):
+    client.post(f'/meat/count/{period}', data={'action': 'confirm', 'extra_count': '1',
+                                               'extra_0_part': str(pid_buta), 'extra_0_kg': str(kg)})
+    client.post(f'/meat/closing/{period}', data={'action': 'confirm'})
+def closed(period):
+    return mdb.compute_closing(period)['status']['closed']
+count_and_close('2027-05', 10)
+count_and_close('2027-06', 5)
+check(closed('2027-05') and closed('2027-06'), '（前提）5月・6月を締めた')
+try:
+    mdb.unlock_count('2027-05'); ok = False
+except ValueError as e:
+    ok = '締めを解除' in str(e)
+check(ok, '締めたままでは棚卸を戻せず、解除を案内する')
+h = client.get('/meat/closing/2027-05').get_data(as_text=True)
+check('締めを解除する' in h and 'この月を締める' not in h, '締めた月に解除のボタンが出る')
+check('締めを解除する' not in client.get('/meat/closing/2027-07').get_data(as_text=True), '締めていない月には解除のボタンが出ない')
+
+# 管理者でなければ解除できない
+meat_module.MEAT_ADMIN_PASSWORD = 'pw'
+outsider = app.test_client()
+outsider.post('/meat/closing/2027-06', data={'action': 'reopen', 'reason': 'いたずら'})
+check(closed('2027-06') and not mdb.list_closing_reopens('2027-06'), '管理者でなければ解除できない')
+check('締めを解除する' not in outsider.get('/meat/closing/2027-06').get_data(as_text=True), '管理者でなければボタンも出ない')
+meat_module.MEAT_ADMIN_PASSWORD = ''
+
+client.post('/meat/closing/2027-06', data={'action': 'reopen', 'reason': '  '})
+check(closed('2027-06'), '理由が空なら解除しない')
+client.post('/meat/closing/2027-05', data={'action': 'reopen', 'reason': '次が締め済み'})
+check(closed('2027-05') and not mdb.list_closing_reopens('2027-05'), '次の期間が締め済みなら解除しない')
+
+client.post('/meat/closing/2027-06', data={'action': 'reopen', 'reason': '棚卸の間違い'})
+client.post('/meat/closing/2027-05', data={'action': 'reopen', 'reason': '棚卸の間違い'})
+check(not closed('2027-06') and not closed('2027-05'), '新しい月から順に解除できる')
+log = mdb.list_closing_reopens('2027-05')
+check(len(log) == 1 and log[0]['reason'] == '棚卸の間違い', '解除の記録が残る')
+with mdb.engine.begin() as con:
+    snap = json.loads(con.execute(mdb.text('SELECT snapshot FROM meat_closing_reopens WHERE period = :p'), {'p': '2027-05'}).scalar())
+check(any(r['part_id'] == pid_buta and r['closing_kg'] == 10 for r in snap), '解除前の数字が記録に残る')
+check('棚卸の間違い' in client.get('/meat/closing/2027-05').get_data(as_text=True), '解除の記録が画面に出る')
+
+# 直して締め直すと新しい数字になり、次の月の前繰も変わる
+mdb.unlock_count('2027-05')
+count_and_close('2027-05', 8)
+row = lambda period: next(r for r in mdb.compute_closing(period)['rows'] if r['part_id'] == pid_buta)
+check(closed('2027-05') and row('2027-05')['closing_kg'] == 8, '直して締め直すと新しい数字になる')
+check(row('2027-06')['opening_kg'] == 8, '次の月の前繰も新しい数字になる')
+
 from database import engine
 engine.dispose()
 try:
