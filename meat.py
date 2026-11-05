@@ -463,7 +463,7 @@ def count(period):
                            is_past=is_past, this_week=_this_week(), this_month=_this_period(),
                            extras=extras, parts=[p for p in parts if not week or p['id'] in weekly_ids],
                            monthly_only=[p['name'] for p in parts if p['id'] not in weekly_ids] if week else [],
-                           is_week=week, prices=mdb.valuation_prices(period))
+                           is_week=week, prices=mdb.valuation_prices(period), pack_parts=mdb.PACK_PARTS)
 
 
 # ============================================================

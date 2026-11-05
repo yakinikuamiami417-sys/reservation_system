@@ -264,6 +264,31 @@ def init_meat_db():
     _add_weekly_column()
     _add_cost_group_column()
     _split_udemomo()
+    _add_count_only_parts()
+
+
+# 2026-11-05 社長：棚卸の「一覧に無い分」で選べるように追加。月末だけ数える。下限は0（警告を出さない）
+# (部位, 分類, 主な仕入先, 並び順)。仕入先・単価は在庫アプリの商品マスターより
+COUNT_ONLY_PARTS = [
+    ('ブタカタ',   '正肉',   'フクショク', 190),
+    ('ウインナー', '加工肉', 'フード',     200),
+    ('ハム',       '加工肉', 'マルキョウ', 210),
+    ('ベーコン',   '加工肉', 'マルキョウ', 220),
+]
+# kgではなくパック数で数える部位（在庫アプリの単価が1パックあたりのため）
+PACK_PARTS = ('ウインナー', 'ハム', 'ベーコン')
+
+
+def _add_count_only_parts():
+    """足りない部位を足す。既にあれば触らない（起動のたびに呼ばれるので何度動いても同じ結果になる）"""
+    with engine.begin() as con:
+        for name, category, supplier, order in COUNT_ONLY_PARTS:
+            con.execute(text('INSERT INTO meat_suppliers (name) VALUES (:n) ON CONFLICT (name) DO NOTHING'), {'n': supplier})
+            sid = con.execute(text('SELECT id FROM meat_suppliers WHERE name = :n'), {'n': supplier}).scalar()
+            con.execute(text("""
+                INSERT INTO meat_parts (name, category, default_supplier_id, min_stock_kg, sort_order, count_weekly)
+                VALUES (:n, :c, :s, 0, :o, 0) ON CONFLICT (name) DO NOTHING
+            """), {'n': name, 'c': category, 's': sid, 'o': order})
 
 
 # 週次の棚卸で量る部位（金額の大きい部位）。それ以外は月末だけ量る（2026-10-29 決定）
@@ -978,6 +1003,8 @@ DEFAULT_UNIT_PRICES = {
     'センレバハツ': 3000, 'ホルモン': 3000, 'ハラミ（和牛）': 5100, 'タン（和牛）': 5100, 'ミノ': 3700,
     'トリ': 1550, 'ウデモモ': 4200, 'トモバラ': 2100, 'クラシタ': 4200, 'タン（アメリカ産）': 5800,
     'ヒレ': 11000, 'サーロイン': 7500, 'ブタ': 1600, 'テール': 2000,   # テールは2026-10-29 社長回答
+    'ブタカタ': 1000,                                  # 円/kg
+    'ウインナー': 274, 'ハム': 298, 'ベーコン': 298,   # 円/パック（PACK_PARTS）
 }
 
 

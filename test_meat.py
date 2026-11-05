@@ -316,6 +316,27 @@ check(mdb.get_count('2027-03')['status'] == 'confirmed', '（前提）確定で�
 h = client.get('/meat/count/2027-03').get_data(as_text=True)
 check('id="extra-row-template"' not in h and '欄を追加' not in h, '確定済みの棚卸には欄を追加のボタンを出さない')
 
+# ---- 棚卸だけで数える部位：ブタカタ（kg）、ウインナー・ハム・ベーコン（パック数） ----
+before = len(mdb.list_parts())
+mdb.init_meat_db()
+check(len(mdb.list_parts()) == before, 'もう一度初期化しても部位は増えない')
+added = {p['name']: p for p in mdb.list_parts()}
+check(all(added[n]['count_weekly'] == 0 and added[n]['min_stock_kg'] == 0 for n in ('ブタカタ', 'ウインナー', 'ハム', 'ベーコン')),
+      '追加した4品は月末だけ数え、下限は0')
+h = client.get('/meat/count/2027-04').get_data(as_text=True)
+check(all(s in h for s in ('ブタカタ', 'ウインナー（パック数）', 'ハム（パック数）', 'ベーコン（パック数）')), '月末の棚卸の部位に4品が出る')
+h = client.get('/meat/count/2027-04-05').get_data(as_text=True)
+check('ハム（パック数）' not in h, '週次の棚卸の部位には出ない')
+client.post('/meat/count/2027-04', data={
+    'action': 'save', 'extra_count': '4',
+    'extra_0_part': str(added['ブタカタ']['id']), 'extra_0_kg': '6.5',
+    'extra_1_part': str(added['ウインナー']['id']), 'extra_1_kg': '3',
+    'extra_2_part': str(added['ハム']['id']), 'extra_2_kg': '2',
+    'extra_3_part': str(added['ベーコン']['id']), 'extra_3_kg': '1'})
+amounts = {ln['part_name']: ln['amount'] for ln in mdb.get_count('2027-04')['lines']}
+check(amounts == {'ブタカタ': 6500, 'ウインナー': 822, 'ハム': 596, 'ベーコン': 298}, f'棚卸金額＝数量×単価 {amounts}')
+check(client.get('/meat/').status_code == 200 and client.get('/meat/closing/2027-04').status_code == 200, '在庫・原価の画面が開く')
+
 from database import engine
 engine.dispose()
 try:
