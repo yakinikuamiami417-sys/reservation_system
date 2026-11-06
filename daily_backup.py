@@ -1,6 +1,6 @@
 # daily_backup.py — 毎日の自動バックアップ
 #
-# 予約全件・顧客集計・POS売上明細をまとめたExcelを作成し、指定のメールアドレスに
+# 予約全件・顧客集計・POS売上明細・正肉在庫・価格表をまとめたExcelを作成し、指定のメールアドレスに
 # 添付ファイルとして送信する。Render の Cron Job から「python daily_backup.py」として
 # 毎日1回実行される想定（手順は DEPLOY.md 参照）。
 #
@@ -27,7 +27,7 @@ def send_email(attachment: bytes, filename: str) -> None:
     msg['From'] = sender
     msg['To'] = to
     msg.set_content(
-        f'{today_jst().isoformat()} 時点の予約データバックアップです。\n'
+        f'{today_jst().isoformat()} 時点のバックアップです（予約・POS売上・正肉在庫・価格表）。\n'
         '自動送信メールのため返信不要です。'
     )
     msg.add_attachment(

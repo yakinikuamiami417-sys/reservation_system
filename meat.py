@@ -8,6 +8,7 @@ from functools import wraps
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, Response, abort
 
 import meat_db as mdb
+import price_db
 import label_reader
 import cattle_lookup
 
@@ -208,7 +209,7 @@ def new_lots():
         return redirect(url_for('meat.index', tab='held'))
     last_prices = {p['id']: mdb.last_unit_price(p['id']) for p in parts}
     return render_template('meat/new.html', parts=mdb.entry_parts(), suppliers=suppliers, last_prices=last_prices,
-                           today=_today(), supplier=request.args.get('supplier', ''),
+                           base_prices=mdb.base_part_prices(), today=_today(), supplier=request.args.get('supplier', ''),
                            reader_ready=label_reader.is_configured())
 
 
@@ -256,7 +257,7 @@ def api_read_label():
         part_id, sub = mdb.resolve_alias(p.get('label_item_name'), p.get('processor_name'))
         p['part_id'] = part_id
         p['sub_part_name'] = sub or ''
-        p['unit_price'] = mdb.last_unit_price(part_id) if part_id else None
+        p['unit_price'] = (mdb.base_part_prices().get(part_id) or mdb.last_unit_price(part_id)) if part_id else None
         p['warnings'] = label_reader.check_piece(p, _today())
     return jsonify({'photo_id': photo_id, 'pieces': result['pieces'], 'notes': result.get('notes', ''),
                     'raw': result['raw']})
@@ -337,6 +338,56 @@ def lot_cancel(lot_id):
         mdb.cancel_lot(lot_id, staff_name(), request.form.get('memo', '').strip())
         flash('買付を取り消しました', 'success')
     return redirect(url_for('meat.index', tab='held'))
+
+
+@bp.route('/lot/<int:lot_id>/price', methods=['POST'])
+@admin_required
+def lot_price(lot_id):
+    try:
+        mdb.update_lot_price(lot_id, request.form.get('unit_price', ''), staff_name(), request.form.get('memo', ''))
+        flash('単価を直しました', 'success')
+    except ValueError as e:
+        flash(str(e), 'danger')
+    return redirect(url_for('meat.lot_detail', lot_id=lot_id))
+
+
+# ============================================================
+# 価格表（部門を問わない共通の仕組み：price_db.py）
+# ============================================================
+@bp.route('/prices')
+def prices():
+    dept = request.args.get('dept', price_db.MEAT_DEPARTMENT)
+    if dept not in price_db.DEPARTMENTS:
+        abort(404)
+    is_meat = dept == price_db.MEAT_DEPARTMENT
+    return render_template('meat/prices.html', dept=dept, departments=price_db.DEPARTMENTS, is_meat=is_meat,
+                           items=price_db.list_items(dept, _today()), today=_today(),
+                           purchases=mdb.recent_purchases() if is_meat else {})
+
+
+@bp.route('/prices/<int:item_id>', methods=['POST'])
+@admin_required
+def price_set(item_id):
+    f = request.form
+    try:
+        price_db.set_price(item_id, f.get('unit_price', ''), f.get('effective_from', ''), staff_name(), f.get('memo', ''))
+        flash('値段を変更しました', 'success')
+    except ValueError as e:
+        flash(str(e), 'danger')
+    return redirect(url_for('meat.prices', dept=f.get('dept')) + f'#item-{item_id}')
+
+
+@bp.route('/prices/add', methods=['POST'])
+@admin_required
+def price_add():
+    f = request.form
+    try:
+        price_db.add_item(f.get('dept'), f.get('name'), f.get('unit'), f.get('supplier_name'), f.get('unit_price', ''),
+                          f.get('effective_from', ''), staff_name())
+        flash('品目を追加しました', 'success')
+    except ValueError as e:
+        flash(str(e), 'danger')
+    return redirect(url_for('meat.prices', dept=f.get('dept')))
 
 
 @bp.route('/lot/<int:lot_id>/unreceive', methods=['POST'])

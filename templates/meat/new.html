@@ -60,7 +60,7 @@
         <label class="muted-small">部位</label>
         <select class="form-select" data-f="part_id">
           <option value="">選んでください</option>
-          {% for p in parts %}<option value="{{ p.id }}" data-price="{{ last_prices[p.id] or '' }}">{{ p.name }}{% if p.cost_group and p.cost_group != p.name %}　（{{ p.cost_group }}）{% endif %}</option>{% endfor %}
+          {% for p in parts %}<option value="{{ p.id }}" data-base="{{ base_prices.get(p.id) or '' }}" data-last="{{ last_prices[p.id] or '' }}">{{ p.name }}{% if p.cost_group and p.cost_group != p.name %}　（{{ p.cost_group }}）{% endif %}</option>{% endfor %}
         </select>
       </div>
       <div class="col-3">
@@ -71,6 +71,7 @@
         <label class="muted-small">単価</label>
         <input class="form-control num" inputmode="numeric" data-f="unit_price">
       </div>
+      <div class="col-12 text-end num muted-small piece-price-hint"></div>
       <div class="col-12 text-end num piece-amount muted-small">金額 -</div>
       <div class="col-12">
         <label class="muted-small">個体識別番号</label>
@@ -132,12 +133,34 @@ function addPiece(p) {
   const sel = node.querySelector('[data-f=part_id]');
   const price = node.querySelector('[data-f=unit_price]');
   if (!p.part_id && p.label_item_name) sel.classList.add('warn-field');
+  // 単価は基本の価格表の値段が入る（無ければ前回の仕入単価）。この場で変えられる。
+  // 自分で入れた単価は、部位を選び直しても消さない
+  const yen = v => Number(v).toLocaleString() + '円';
+  const priceHint = () => {
+    const opt = sel.selectedOptions[0], box = node.querySelector('.piece-price-hint');
+    if (!opt || !opt.value) { box.textContent = ''; return; }
+    const base = opt.dataset.base, last = opt.dataset.last, u = parseInt(price.value);
+    const parts = [];
+    if (base) parts.push('基本 ' + yen(base));
+    if (last) parts.push('前回 ' + yen(last));
+    let text = parts.join('／');
+    if (base && u && u !== Number(base)) {
+      const diff = u - Number(base);
+      text += `（基本より ${diff > 0 ? '+' : '−'}${Math.abs(diff).toLocaleString()}円）`;
+    }
+    box.textContent = text;
+  };
   sel.addEventListener('change', () => {
     sel.classList.remove('warn-field');
     const opt = sel.selectedOptions[0];
-    if (!price.value && opt && opt.dataset.price) price.value = opt.dataset.price;
+    if (!price.value || price.dataset.auto) {
+      price.value = (opt && (opt.dataset.base || opt.dataset.last)) || '';
+      price.dataset.auto = '1';
+    }
+    priceHint();
     calc();
   });
+  price.addEventListener('input', () => { delete price.dataset.auto; priceHint(); });
   const calc = () => {
     const t = parseFloat(node.querySelector('[data-f=trade_kg]').value);
     const u = parseFloat(price.value);

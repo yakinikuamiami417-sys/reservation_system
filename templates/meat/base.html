@@ -55,6 +55,7 @@
   <a href="{{ url_for('meat.receive') }}" class="{{ 'on' if _ep == 'meat.receive' }}"><i class="bi bi-truck"></i>納品</a>
   <a href="{{ url_for('meat.count', period=meat_week) }}" class="{{ 'on' if _ep == 'meat.count' }}"><i class="bi bi-clipboard-check"></i>棚卸</a>
   <a href="{{ url_for('meat.closing', period=meat_week) }}" class="{{ 'on' if _ep == 'meat.closing' }}"><i class="bi bi-graph-up"></i>原価</a>
+  <a href="{{ url_for('meat.prices') }}" class="{{ 'on' if _ep == 'meat.prices' }}"><i class="bi bi-tag"></i>価格表</a>
 </nav>
 
 <div class="container container-narrow px-3 py-3">

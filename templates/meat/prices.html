@@ -1,0 +1,94 @@
+{% extends "meat/base.html" %}
+{% block title %}基本の価格表{% endblock %}
+{% block content %}
+<h5 class="fw-bold mb-2"><i class="bi bi-tag"></i> 基本の価格表</h5>
+<ul class="nav nav-pills mb-2" style="font-size:.85rem">
+  {% for d in departments %}
+  <li class="nav-item"><a class="nav-link py-1 px-2 {{ 'active' if d == dept }}" href="{{ url_for('meat.prices', dept=d) }}">{{ d }}</a></li>
+  {% endfor %}
+</ul>
+<div class="muted-small mb-3">
+  {% if is_meat %}目利きの単価の初期値になります。仕入の記録がまだ無い部位は、棚卸の評価にも使います（仕入がある部位の棚卸は最後の仕入単価で計算）。
+  {% else %}今は値段の控えです。在庫・棚卸・原価にはまだつながっていません。{% endif %}
+</div>
+
+{% for it in items %}
+<div class="card p-3 mb-2" id="item-{{ it.id }}">
+  <div class="d-flex justify-content-between align-items-start">
+    <div><b>{{ it.name }}</b>
+      <div class="muted-small">{{ it.supplier_name or '仕入先なし' }}</div></div>
+    <div class="text-end">
+      {% if it.current %}
+      <b class="num fs-5">{{ '{:,}'.format(it.current.unit_price) }}円</b><span class="muted-small">/{{ it.unit }}</span>
+      {% else %}<span class="text-danger fw-bold">未設定</span>{% endif %}
+      {% if it.current and it.previous %}
+        {% set diff = it.current.unit_price - it.previous.unit_price %}
+        {% if diff %}<div class="num fw-bold {{ 'text-danger' if diff > 0 else 'text-primary' }}" style="font-size:.82rem">
+          前回より {{ '+' if diff > 0 else '−' }}{{ '{:,}'.format(diff|abs) }}円</div>{% endif %}
+      {% endif %}
+      {% if it.current %}<div class="muted-small">{{ it.current.effective_from|replace('-', '/') }} から</div>{% endif %}
+    </div>
+  </div>
+  {% if it.upcoming %}
+  <div class="alert alert-warning py-1 px-2 mt-2 mb-0" style="font-size:.82rem">
+    {{ it.upcoming.effective_from|replace('-', '/') }} から <b class="num">{{ '{:,}'.format(it.upcoming.unit_price) }}円</b> に変わります</div>
+  {% endif %}
+  {% set bought = purchases.get(it.part_id) or [] %}
+  {% if bought %}
+  {% set latest = bought[0] %}
+  <div class="num mt-1" style="font-size:.85rem">最新の仕入 <b>{{ '{:,}'.format(latest.price) }}円</b>
+    <span class="muted-small">{{ latest.on[5:10]|replace('-', '/') }} {{ latest.supplier }}</span>
+    {% if it.current and latest.price != it.current.unit_price %}
+      {% set gap = latest.price - it.current.unit_price %}
+      <span class="fw-bold {{ 'text-danger' if gap > 0 else 'text-primary' }}">基本より {{ '+' if gap > 0 else '−' }}{{ '{:,}'.format(gap|abs) }}円</span>
+    {% endif %}
+  </div>
+  {% endif %}
+  <details class="mt-2">
+    <summary class="muted-small">{{ '値段を変える・履歴' if meat_is_admin else '履歴' }}</summary>
+    {% if meat_is_admin %}
+    <form method="post" action="{{ url_for('meat.price_set', item_id=it.id) }}" class="row g-2 mt-1">
+      <input type="hidden" name="dept" value="{{ dept }}">
+      <div class="col-6"><label class="muted-small">新しい値段（円/{{ it.unit }}）</label>
+        <input name="unit_price" class="form-control num" inputmode="numeric" required></div>
+      <div class="col-6"><label class="muted-small">いつから</label>
+        <input type="date" name="effective_from" class="form-control" value="{{ today.isoformat() }}" required></div>
+      <div class="col-12"><input name="memo" class="form-control" placeholder="メモ（任意）例：フードから値上げの連絡"></div>
+      <div class="col-12"><button class="btn btn-outline-primary w-100">値段を変更</button></div>
+    </form>
+    {% endif %}
+    <div class="fw-semibold mt-2" style="font-size:.85rem">価格表の履歴</div>
+    {% for h in it.history %}
+    <div class="num" style="font-size:.85rem">{{ h.effective_from|replace('-', '/') }}　{{ '{:,}'.format(h.unit_price) }}円
+      <span class="muted-small">{{ h.staff_name or '' }} {{ h.memo or '' }}</span></div>
+    {% else %}<div class="muted-small">まだありません</div>{% endfor %}
+    {% if bought %}
+    <div class="fw-semibold mt-2" style="font-size:.85rem">最近の仕入単価</div>
+    {% for b in bought %}
+    <div class="num" style="font-size:.85rem">{{ b.on[:10]|replace('-', '/') }}　{{ '{:,}'.format(b.price) }}円 <span class="muted-small">{{ b.supplier }}</span></div>
+    {% endfor %}
+    {% endif %}
+  </details>
+</div>
+{% else %}
+<p class="text-muted text-center py-3">{{ dept }}の品目はまだありません。</p>
+{% endfor %}
+
+{% if meat_is_admin and not is_meat %}
+<div class="card p-3 mt-3">
+  <div class="fw-semibold mb-2">{{ dept }}に品目を足す</div>
+  <form method="post" action="{{ url_for('meat.price_add') }}" class="row g-2">
+    <input type="hidden" name="dept" value="{{ dept }}">
+    <div class="col-8"><label class="muted-small">品名</label><input name="name" class="form-control" required></div>
+    <div class="col-4"><label class="muted-small">単位</label><input name="unit" class="form-control" placeholder="本・ケース" required></div>
+    <div class="col-12"><label class="muted-small">仕入先</label><input name="supplier_name" class="form-control"></div>
+    <div class="col-6"><label class="muted-small">値段（円）</label><input name="unit_price" class="form-control num" inputmode="numeric" required></div>
+    <div class="col-6"><label class="muted-small">いつから</label><input type="date" name="effective_from" class="form-control" value="{{ today.isoformat() }}" required></div>
+    <div class="col-12"><button class="btn btn-primary w-100 fw-bold">品目を足す</button></div>
+  </form>
+</div>
+{% elif is_meat %}
+<div class="muted-small mt-2">肉の品目は、在庫の部位から自動で載ります。</div>
+{% endif %}
+{% endblock %}
+{% block bottom %}{% endblock %}

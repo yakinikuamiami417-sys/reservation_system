@@ -9,6 +9,7 @@ import json, os, re, unicodedata
 from datetime import date, datetime, timedelta
 from sqlalchemy import text
 
+import price_db
 from database import engine, _IS_PG, _now
 
 LOT_STATUSES = {
@@ -274,6 +275,20 @@ def init_meat_db():
     _add_cost_group_column()
     _split_udemomo()
     _add_count_only_parts()
+    price_db.init_price_db()
+    _sync_price_items()
+
+
+def _sync_price_items():
+    """今の部位を価格表に載せる。部位未分類は前からの記録の置き場なので載せない"""
+    with engine.begin() as con:
+        suppliers = {r.id: r.name for r in con.execute(text('SELECT id, name FROM meat_suppliers'))}
+    for p in list_parts():
+        if p['name'] == UDEMOMO_UNCLASSIFIED:
+            continue
+        price = DEFAULT_UNIT_PRICES.get(p['name']) or DEFAULT_UNIT_PRICES.get(group_name(p))
+        price_db.ensure_part_item(p['id'], p['name'], 'パック' if p['name'] in PACK_PARTS else 'kg',
+                                  suppliers.get(p['default_supplier_id']), p['sort_order'], price)
 
 
 # 2026-11-05 社長：棚卸の「一覧に無い分」で選べるように追加。月末だけ数える。下限は0（警告を出さない）
@@ -494,6 +509,67 @@ def last_unit_price(part_id):
             WHERE part_id IN ({keys}) AND promised_unit_price IS NOT NULL AND status != 'cancelled'
             ORDER BY id DESC LIMIT 1
         """), {f'm{i}': m for i, m in enumerate(members)}).scalar()
+
+
+def base_part_prices():
+    """価格表の今の値段 {part_id: 円}。部位に無ければ同じ集計分類の値段（部位未分類 → ウデ）"""
+    tomorrow = date.fromisoformat(_now()[:10]) + timedelta(days=1)
+    return _with_group_prices(price_db.part_prices(tomorrow.isoformat()))
+
+
+def _with_group_prices(base):
+    out = dict(base)
+    for part_id, g in part_groups().items():
+        if part_id not in out:
+            found = next((base[m] for m in g['members'] if m in base), None)
+            if found:
+                out[part_id] = found
+    return out
+
+
+def recent_purchases(limit=5):
+    """部位ごとの最近の仕入単価（新しい順）{part_id: [{'on','supplier','price'}]}。値上がりの流れを見る用"""
+    with engine.begin() as con:
+        rows = con.execute(text("""
+            SELECT l.part_id, l.promised_unit_price AS price, COALESCE(sl.slip_date, l.promised_on) AS on_date,
+                   s.name AS supplier
+            FROM meat_lots l JOIN meat_suppliers s ON s.id = l.supplier_id
+            LEFT JOIN meat_purchase_slips sl ON sl.id = l.slip_id
+            WHERE l.promised_unit_price IS NOT NULL AND l.status != 'cancelled'
+            ORDER BY on_date DESC, l.id DESC
+        """)).all()
+    out = {}
+    for r in rows:
+        bucket = out.setdefault(r.part_id, [])
+        if len(bucket) < limit:
+            bucket.append({'on': r.on_date, 'supplier': r.supplier, 'price': r.price})
+    return out
+
+
+def update_lot_price(lot_id, price, staff, memo=''):
+    """塊の単価を直す（フードは単価があとで決まる・変わることがある）。金額も計算し直し、記録を残す。
+    締めた期間の仕入は変えない（締めを解除してから直す）"""
+    try:
+        new_price = int(str(price).replace(',', '').strip())
+    except ValueError:
+        raise ValueError('単価は整数で入れてください')
+    if new_price <= 0:
+        raise ValueError('単価は1円以上で入れてください')
+    with engine.begin() as con:
+        lot = con.execute(text("""
+            SELECT l.status, l.trade_kg, l.promised_unit_price, sl.slip_date FROM meat_lots l
+            LEFT JOIN meat_purchase_slips sl ON sl.id = l.slip_id WHERE l.id = :id
+        """), {'id': lot_id}).first()
+        if not lot or lot.status == 'cancelled':
+            raise ValueError('この塊の単価は直せません')
+        if lot.slip_date:
+            d = date.fromisoformat(lot.slip_date[:10])
+            for period in (d.strftime('%Y-%m'), week_end(d).isoformat()):
+                if _closed_rows(con, period):
+                    raise ValueError(f'{period_label(period)} は締め済みです。先に原価の画面で「締めを解除」してください')
+        note = f'単価 {lot.promised_unit_price or "-"}円 → {new_price}円'
+        _set_status(con, lot_id, lot.status, 'price', staff, ' '.join(x for x in (note, (memo or '').strip()) if x), None,
+                    {'promised_unit_price': new_price, 'promised_amount': trade_amount(lot.trade_kg, new_price)})
 
 
 def set_menu_parts(menu_name, parts_grams):
@@ -990,9 +1066,10 @@ def valuation_prices(period):
         """), {'end': end}).all()
     # ウデ・モモは別々の単価（2026-11-03 社長：分類した時に棚卸の金額が動いてよい）。
     # その部位に仕入の記録がまだ無い時は、同じ集計分類（ウデモモ）の最後の仕入単価。
-    # それも無い部位（使い始めの内臓など）は、在庫アプリの商品マスターの単価を使う
+    # それも無い部位（使い始めの内臓・ハムなど）は、価格表のその期間の値段を使う
     parts = list_parts(include_inactive=True)
     groups = part_groups(parts)
+    base = _with_group_prices(price_db.part_prices(end))
     own, group_last = {}, {}
     for r in rows:
         own[r.part_id] = r.promised_unit_price
@@ -1001,13 +1078,15 @@ def valuation_prices(period):
     prices = {}
     for p in parts:
         g = groups[p['id']]['group']
-        price = own.get(p['id']) or group_last.get(g) or DEFAULT_UNIT_PRICES.get(p['name']) or DEFAULT_UNIT_PRICES.get(g)
+        price = (own.get(p['id']) or group_last.get(g) or base.get(p['id'])
+                 or DEFAULT_UNIT_PRICES.get(p['name']) or DEFAULT_UNIT_PRICES.get(g))
         if price:
             prices[p['id']] = price
     return prices
 
 
-# 在庫アプリ（inventory_system/seed_kirinya_items.py）の単価（円/kg）。テールは在庫アプリに無く社長に確認
+# 価格表の初期値（一度載せた後の値段は価格表で変える）。在庫アプリ（inventory_system/seed_kirinya_items.py）の単価（円/kg）。
+# テールは在庫アプリに無く社長に確認
 DEFAULT_UNIT_PRICES = {
     'センレバハツ': 3000, 'ホルモン': 3000, 'ハラミ（和牛）': 5100, 'タン（和牛）': 5100, 'ミノ': 3700,
     'トリ': 1550, 'ウデモモ': 4200, 'トモバラ': 2100, 'クラシタ': 4200, 'タン（アメリカ産）': 5800,

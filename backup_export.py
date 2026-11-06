@@ -1,16 +1,61 @@
-# backup_export.py — 予約全件・顧客集計・POS売上明細をまとめたExcelを作る共通ロジック
+# backup_export.py — 予約全件・顧客集計・POS売上明細・正肉在庫・価格表をまとめたExcelを作る共通ロジック
 # app.py の /backup/xlsx（手動ダウンロード）と daily_backup.py（毎日自動メール送信）の
 # 両方から使われる。出力内容がズレないよう、ここに一本化している。
 import io
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.utils import get_column_letter
+from sqlalchemy import inspect, text
 
-from database import get_all_reservations, get_pos_sales
+from database import engine, get_all_reservations, get_pos_sales
 from logic import aggregate_customer_ranking
 
 JST = timezone(timedelta(hours=9))
+
+# 正肉在庫・価格表は表をそのまま1シートずつ入れる。新しい表が増えても自動で入る（名前が無ければ表名をシート名にする）
+DATA_TABLE_PREFIXES = ('meat_', 'price_')
+EXCLUDED_TABLES = ('meat_photos',)   # ラベル写真。容量が大きく、Excelのセルにも入らない
+SHEET_LABELS = {
+    'meat_lots': '正肉_塊', 'meat_lot_events': '正肉_塊の記録', 'meat_purchase_slips': '正肉_伝票',
+    'meat_processing': '正肉_捌き', 'meat_stock_counts': '正肉_棚卸', 'meat_stock_count_lines': '正肉_棚卸の明細',
+    'meat_period_closings': '正肉_締め', 'meat_closing_reopens': '正肉_締めの解除', 'meat_menu_sales': '正肉_出数',
+    'meat_menu_map': '正肉_グラム表', 'meat_parts': '正肉_部位', 'meat_part_aliases': '正肉_品名の読み替え',
+    'meat_suppliers': '正肉_業者', 'meat_cattle': '正肉_個体情報',
+    'price_items': '価格表_品目', 'price_history': '価格表_履歴',
+}
+
+
+def _excel_value(v):
+    """Excelに入れられる形にする（制御文字はExcelがファイルを開けなくなるので取り除く）"""
+    if v is None or isinstance(v, (bool, int, float, Decimal, date, datetime)):
+        return v
+    return ILLEGAL_CHARACTERS_RE.sub('', str(v))
+
+
+def _append_data_tables(wb):
+    """meat_ / price_ の表を1シートずつ足す。先頭に目次（シート名・表名・件数）を置いて、抜けを確かめられるようにする。
+    まだ表が無いDBでも止まらない（予約のバックアップを巻き添えにしない）"""
+    tables = sorted(t for t in inspect(engine).get_table_names()
+                    if t.startswith(DATA_TABLE_PREFIXES) and t not in EXCLUDED_TABLES)
+    index = wb.create_sheet('正肉・価格表の目次')
+    index.append(['シート', '表の名前', '件数'])
+    sheets = [index]
+    with engine.begin() as con:
+        for table in tables:
+            result = con.execute(text(f'SELECT * FROM {table} ORDER BY 1'))
+            label = SHEET_LABELS.get(table, table)[:31]
+            ws = wb.create_sheet(label)
+            ws.append(list(result.keys()))
+            count = 0
+            for row in result:
+                ws.append([_excel_value(v) for v in row])
+                count += 1
+            index.append([label, table, count])
+            sheets.append(ws)
+    return sheets
 
 
 def today_jst() -> date:
@@ -70,7 +115,7 @@ def build_backup_workbook_bytes() -> bytes:
             r['match_status'], r['matched_reservation_id'] or '', r['import_batch'],
         ])
 
-    for ws in (ws1, ws2, ws3):
+    for ws in [ws1, ws2, ws3] + _append_data_tables(wb):
         for col_cells in ws.columns:
             length = max((len(str(cell.value)) for cell in col_cells if cell.value is not None), default=8)
             ws.column_dimensions[get_column_letter(col_cells[0].column)].width = min(length + 2, 40)

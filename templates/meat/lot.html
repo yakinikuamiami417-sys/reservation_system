@@ -104,6 +104,21 @@
 </div>
 {% endif %}
 
+{% if meat_is_admin and lot.status in ('held', 'received', 'processed') %}
+<details class="card p-3 mb-3">
+  <summary class="fw-semibold">単価を直す（今 {{ '{:,}'.format(lot.promised_unit_price) if lot.promised_unit_price else '-' }}円）</summary>
+  <form method="post" action="{{ url_for('meat.lot_price', lot_id=lot.id) }}" class="mt-2"
+        onsubmit="return confirm('この塊の単価を直しますか？金額も計算し直します')">
+    <div class="d-flex gap-2 mb-2">
+      <input name="unit_price" class="form-control num" inputmode="numeric" placeholder="新しい単価" required>
+      <input name="memo" class="form-control" placeholder="理由（任意）">
+    </div>
+    <button class="btn btn-outline-primary w-100">単価を直す</button>
+    <div class="muted-small mt-1">確定済みの棚卸の金額は、その棚卸を確定し直すと変わります。締めた期間の仕入は、締めを解除してから直します。</div>
+  </form>
+</details>
+{% endif %}
+
 {% if meat_is_admin and lot.status in ('received', 'processed') %}
 <div class="card p-3 mb-3">
   <div class="fw-semibold mb-2">{{ '捌き・商品化' if lot.status == 'received' else 'もう一度捌く（追加の商品化）' }}</div>
@@ -155,7 +170,7 @@
 
 <div class="card p-3 mb-3">
   <div class="fw-semibold mb-2">履歴</div>
-  {% set names = {'promise': '目利き', 'receive': '納品', 'process': '捌き', 'weigh': '計量', 'consume': '使い切り', 'cancel': '取消', 'unreceive': '納品取消', 'edit': '修正', 'reclassify': '部位の分類'} %}
+  {% set names = {'promise': '目利き', 'receive': '納品', 'process': '捌き', 'weigh': '計量', 'consume': '使い切り', 'cancel': '取消', 'unreceive': '納品取消', 'edit': '修正', 'reclassify': '部位の分類', 'price': '単価変更'} %}
   {% for e in lot.events %}
   <div style="font-size:.85rem">{{ e.logged_at[:16] }}　<b>{{ names.get(e.event_type, e.event_type) }}</b>
     {% if e.kg is not none %}{{ e.kg }}kg{% endif %} {{ e.memo or '' }} <span class="muted-small">{{ e.staff_name or '' }}</span></div>
