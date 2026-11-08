@@ -74,6 +74,35 @@ except Exception as e:
     print(f"[WARN] 今日の仕事のDB初期化に失敗しました: {e}")
 
 
+# 日別の売上目標と目標客数（/sales-targets）。予約の表には触らない
+import sales_targets
+import sales_target_db
+app.register_blueprint(sales_targets.bp)
+try:
+    sales_target_db.init_sales_target_db()
+except Exception as e:
+    print(f"[WARN] 売上目標のDB初期化に失敗しました: {e}")
+
+
+def _sales_goal(target_date, reservations, now=None):
+    """その日の目標客数と不足人数。来店見込み＝キャンセルを除く総人数（来店済み＋これから。重ねて足さない）。
+    now を渡した時（当日）だけ、予定時刻を過ぎて未受付の人数も数える。
+    目標の読み込みに失敗しても予約の画面は必ず出す（status='error'）"""
+    expected = sum(r['total_people'] for r in reservations)
+    visited = sum(r['total_people'] for r in reservations if r['status'] == 'visited')
+    overdue = 0
+    if now is not None:
+        limit = (now - timedelta(minutes=sales_target_db.OVERDUE_GRACE_MINUTES)).strftime('%H:%M')
+        overdue = sum(r['total_people'] for r in reservations if r['status'] != 'visited' and r['time_slot'] < limit)
+    try:
+        return sales_target_db.goal_for(sales_target_db.get_target(target_date), sales_target_db.get_unit_price(),
+                                        expected, visited, expected - visited, overdue)
+    except Exception as e:
+        print(f"[WARN] 売上目標を読めませんでした: {e}")
+        return {'status': 'error', 'expected': expected, 'visited': visited, 'upcoming': expected - visited,
+                'overdue': overdue}
+
+
 def _duty_summary():
     """予約台帳の入口に出す件数。失敗しても予約の画面は必ず出す"""
     try:
@@ -318,6 +347,8 @@ def index():
     return render_template(
         'index.html',
         duty_summary = _duty_summary(),
+        sales_goal   = _sales_goal(target_date, reservations,
+                                   now_jst() if target_date == today_jst().isoformat() else None),
         reservations = reservations,
         cancelled    = cancelled,
         target_date  = target_date,
@@ -938,6 +969,7 @@ def _kitchen_monitor_data() -> dict:
         'remaining_groups': total_groups - visited_groups,
         'remaining_people': total_people - visited_people,
         'next':            next_res,
+        'goal':            _sales_goal(today_str, reservations, now),
     }
 
 @app.route('/kitchen-monitor')

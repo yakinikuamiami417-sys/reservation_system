@@ -16,7 +16,7 @@ from logic import aggregate_customer_ranking
 JST = timezone(timedelta(hours=9))
 
 # 正肉在庫・価格表は表をそのまま1シートずつ入れる。新しい表が増えても自動で入る（名前が無ければ表名をシート名にする）
-DATA_TABLE_PREFIXES = ('meat_', 'price_')
+DATA_TABLE_PREFIXES = ('meat_', 'price_', 'sales_target')
 EXCLUDED_TABLES = ('meat_photos',)   # ラベル写真。容量が大きく、Excelのセルにも入らない
 SHEET_LABELS = {
     'meat_lots': '正肉_塊', 'meat_lot_events': '正肉_塊の記録', 'meat_purchase_slips': '正肉_伝票',
@@ -25,6 +25,7 @@ SHEET_LABELS = {
     'meat_menu_map': '正肉_グラム表', 'meat_parts': '正肉_部位', 'meat_part_aliases': '正肉_品名の読み替え',
     'meat_suppliers': '正肉_業者', 'meat_cattle': '正肉_個体情報',
     'price_items': '価格表_品目', 'price_history': '価格表_履歴',
+    'sales_targets': '売上目標_日別', 'sales_target_settings': '売上目標_設定',
 }
 
 

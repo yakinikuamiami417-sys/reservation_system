@@ -12,21 +12,60 @@
   {% if target_date == today %}
     <span class="badge bg-success fs-6 px-2">本日</span>
   {% endif %}
+  {# 売上目標に対する目標客数（客単価で割った人数の目安）。押すと内訳が出る #}
+  {% set g = sales_goal %}
+  {% if g %}
+    {% if g.status in ('short', 'achieved') %}
+    <button type="button" class="goal-pill goal-{{ g.status }}" data-bs-toggle="collapse" data-bs-target="#goalDetail"
+            aria-expanded="false" title="押すと内訳">
+<i class="bi bi-bullseye"></i> 目標{{ g.goal }}名・{% if g.status == 'short' %}あと{{ g.short }}名{% else %}達成{% if g.surplus %}＋{{ g.surplus }}名{% endif %}{% endif %}
+    </button>
+    {% else %}
+    <a href="/sales-targets/?month={{ target_date[:7] }}" class="goal-pill goal-unset"
+       title="売上目標を入れる"><i class="bi bi-bullseye"></i> 目標未設定{% if g.status == 'error' %}（読み込み失敗）{% endif %}</a>
+    {% endif %}
+  {% endif %}
   <a href="/?date={{ next_date }}" class="btn btn-outline-secondary btn-sm">
     <i class="bi bi-chevron-right"></i>
   </a>
   <input type="date" class="form-control form-control-sm ms-2" style="width:160px"
          value="{{ target_date }}" onchange="location.href='/?date='+this.value">
-  <a href="/timetable?date={{ target_date }}" class="btn btn-outline-dark btn-sm ms-auto">
+  {# 右側のボタンは1つのまとまり。幅が足りない時は3つ一緒に次の行へ移る（新規予約だけが落ちない） #}
+  <div class="d-flex flex-wrap gap-2 ms-auto">
+  <a href="/timetable?date={{ target_date }}" class="btn btn-outline-dark btn-sm">
     <i class="bi bi-calendar3 me-1"></i>タイムテーブル
   </a>
   <a href="/reservations/print?date={{ target_date }}" target="_blank" class="btn btn-outline-dark btn-sm">
-    <i class="bi bi-printer me-1"></i>🖨️ 印刷用レイアウト（A4）
+    <i class="bi bi-printer me-1"></i>印刷用レイアウト（A4）
   </a>
   <a href="/reservation/new?date={{ target_date }}" class="btn btn-kirin btn-sm">
     <i class="bi bi-plus-lg me-1"></i>新規予約
   </a>
+  </div>
 </div>
+{% if sales_goal and sales_goal.status in ('short', 'achieved') %}
+{% set g = sales_goal %}
+<div class="collapse no-print" id="goalDetail">
+  <div class="goal-detail">
+    {% if g.status == 'achieved' %}
+    <div class="fw-bold text-success mb-1">🎉 {{ g.cheer }}　次は{{ g.next_pct }}%（{{ g.next_goal }}名）まで あと{{ g.to_next }}名</div>
+    {% endif %}
+    売上目標（税抜）<b>{{ "{:,}".format(g.amount) }}円</b> ÷ 客単価 {{ "{:,}".format(g.unit_price) }}円 ＝ 目標 <b>{{ g.goal }}名</b>
+    ／ 来店見込み <b>{{ g.expected }}名</b>（来店済み {{ g.visited }}名 ＋ これから {{ g.upcoming }}名）
+    {% if g.overdue %}<span class="text-danger fw-bold">／ 予定時刻を過ぎて未受付 {{ g.overdue }}名</span>{% endif %}
+    <div class="text-muted small">人数の目安です（客単価{{ "{:,}".format(g.unit_price) }}円で計算）。人数が達成でも、売上の達成とは限りません。
+      <a href="/sales-targets?month={{ target_date[:7] }}">売上目標を見る</a></div>
+  </div>
+</div>
+{% endif %}
+<style>
+  .goal-pill { border-radius:30px; padding:2px 8px; font-weight:800; font-size:.82rem; letter-spacing:-.02em; border:2px solid; text-decoration:none;
+               line-height:1.5; cursor:pointer; white-space:nowrap; }
+  .goal-pill.goal-short { background:#fff3cd; color:#6b4b00; border-color:#e0a800; }
+  .goal-pill.goal-achieved { background:#d8f3dc; color:#14532d; border-color:#2d6a4f; }
+  .goal-pill.goal-unset { background:#eee; color:#666; border-color:#ccc; font-weight:700; }
+  .goal-detail { background:#fff; border:1px solid #ddd; border-radius:10px; padding:10px 14px; margin:-8px 0 16px; }
+</style>
 
 {% if duty_summary %}
 {% set ds = duty_summary %}

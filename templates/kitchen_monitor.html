@@ -90,6 +90,30 @@
     .progress-bar-fg { background: linear-gradient(90deg, var(--green), #21a99d); height: 100%; width: 0%; transition: width 1s ease; }
     .progress-label { text-align: center; font-size: clamp(.9rem, 1.4vw, 1.1rem); color: #999; margin-top: 6px; font-weight: 600; }
 
+    /* 売上目標に対する目標客数（今の表示の下に足した帯） */
+    .goal-band {
+      background: var(--panel); border-radius: 18px; border: 2px solid #2a2a2a;
+      padding: clamp(10px, 1.6vh, 18px) clamp(16px, 2.4vw, 32px);
+      display: grid; grid-template-columns: 1fr auto; align-items: center; gap: clamp(10px, 2vw, 28px);
+    }
+    .goal-band .line1 { font-size: clamp(1rem, 1.8vw, 1.5rem); font-weight: 700; color: #ddd; }
+    .goal-band .line1 b { color: #fff; font-variant-numeric: tabular-nums; }
+    .goal-band .line2 { font-size: clamp(1rem, 1.8vw, 1.5rem); font-weight: 700; color: #bbb; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .goal-band .line2 b { color: #fff; }
+    .goal-band .note { font-size: clamp(.8rem, 1.1vw, .95rem); color: #888; margin-top: 4px; }
+    .goal-band .overdue { color: var(--red); font-weight: 800; font-size: clamp(.95rem, 1.5vw, 1.2rem); margin-top: 4px; }
+    .goal-big {
+      font-size: clamp(1.8rem, 4.2vw, 3.4rem); font-weight: 900; text-align: center; white-space: nowrap;
+      border-radius: 14px; padding: 6px 26px; font-variant-numeric: tabular-nums;
+      background: rgba(212,175,55,.14); color: var(--gold); border: 3px solid var(--gold);
+    }
+    .goal-big.achieved { background: rgba(46,196,182,.14); color: var(--green); border-color: var(--green); }
+    .goal-next { text-align: center; margin-top: 6px; font-size: clamp(.95rem, 1.6vw, 1.3rem); font-weight: 800; color: #fff;
+                 font-variant-numeric: tabular-nums; }
+    .goal-next b { color: var(--gold); }
+    .goal-band.cheer { border-color: var(--green); }
+    .goal-big.unset { background: #1e1e1e; color: #888; border-color: #444; font-size: clamp(1.3rem, 2.6vw, 2.1rem); }
+
     .offline-note {
       position: fixed; bottom: 10px; right: 16px; font-size: .8rem; color: #666;
     }
@@ -150,6 +174,19 @@
     <div class="progress-label" id="progressLabel">来店受付 0 / 0 組</div>
   </div>
 
+  <div class="goal-band" id="goalBand">
+    <div>
+      <div class="line1" id="goalLine1">本日の売上目標（税抜）—</div>
+      <div class="line2" id="goalLine2">来店見込み - 名</div>
+      <div class="overdue" id="goalOverdue" style="display:none"></div>
+      <div class="note" id="goalNote"></div>
+    </div>
+    <div>
+      <div class="goal-big unset" id="goalBig">目標未設定</div>
+      <div class="goal-next" id="goalNext" style="display:none"></div>
+    </div>
+  </div>
+
 </div>
 
 <div class="offline-note" id="offlineNote" style="display:none">⚠️ データ取得に失敗しました。再試行中…</div>
@@ -182,6 +219,8 @@ function renderData(data) {
   document.getElementById('progressLabel').textContent =
     `来店受付 ${data.visited_groups} / ${data.total_groups} 組（${pct}%）`;
 
+  renderGoal(data.goal);
+
   const box = document.getElementById('nextBox');
   box.classList.remove('overdue', 'empty');
   const countdownEl = document.getElementById('nextCountdown');
@@ -209,6 +248,50 @@ function renderData(data) {
     document.getElementById('nextCountdownNum').textContent = 'まもなく';
   } else {
     document.getElementById('nextCountdownNum').innerHTML = `あと${m}分`;
+  }
+}
+
+// 売上目標の帯。「これから来店する人数」（来店見込みの内訳）と「目標まであと何名」は別の数字として見せる
+const fmtYen = n => Number(n).toLocaleString('ja-JP');
+function renderGoal(g) {
+  const big = document.getElementById('goalBig');
+  const overdue = document.getElementById('goalOverdue');
+  const next = document.getElementById('goalNext');
+  const band = document.getElementById('goalBand');
+  big.classList.remove('achieved', 'unset');
+  band.classList.remove('cheer');
+  next.style.display = 'none';
+  if (!g) { g = {status: 'error', expected: '-', visited: '-', upcoming: '-', overdue: 0}; }
+  document.getElementById('goalLine2').innerHTML =
+    `来店見込み <b>${g.expected}名</b>（来店済み ${g.visited}名 ＋ これから ${g.upcoming}名）`;
+  if (g.overdue) {
+    overdue.style.display = 'block';
+    overdue.textContent = `⚠ 予定時刻を過ぎて未受付 ${g.overdue}名（来店受付の押し忘れ・無断キャンセルを確認）`;
+  } else {
+    overdue.style.display = 'none';
+  }
+  if (g.status === 'short' || g.status === 'achieved') {
+    document.getElementById('goalLine1').innerHTML =
+      `本日の売上目標（税抜）<b>${fmtYen(g.amount)}円</b> → 目標客数 <b>${g.goal}名</b>`;
+    document.getElementById('goalNote').textContent =
+      `※人数の目安（客単価${fmtYen(g.unit_price)}円で計算）。売上の達成とは別です`;
+    if (g.status === 'short') {
+      big.textContent = `目標まで あと ${g.short} 名`;
+    } else {
+      // ねぎらい＋次の目安（目標の110%・120%…）
+      big.classList.add('achieved');
+      band.classList.add('cheer');
+      big.textContent = g.surplus ? `🎉 目標達成 ＋${g.surplus}名` : '🎉 目標達成';
+      document.getElementById('goalLine1').innerHTML =
+        `${g.cheer}<br><span style="font-weight:600;color:#bbb">売上目標（税抜）${fmtYen(g.amount)}円 → 目標客数 ${g.goal}名</span>`;
+      next.style.display = 'block';
+      next.innerHTML = `次は${g.next_pct}%（${g.next_goal}名）まで <b>あと${g.to_next}名</b>`;
+    }
+  } else {
+    big.classList.add('unset');
+    big.textContent = g.status === 'error' ? '目標未設定（読み込み失敗）' : '本日の目標未設定';
+    document.getElementById('goalLine1').textContent = '本日の売上目標（税抜）未設定';
+    document.getElementById('goalNote').textContent = '売上目標を入れると、目標客数と不足人数が出ます';
   }
 }
 

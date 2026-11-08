@@ -147,7 +147,7 @@ check(res.status_code == 200, 'バックアップのExcelを取れる')
 wb = load_workbook(io.BytesIO(res.data))
 check({'予約全件', '顧客集計', 'POS売上明細'} <= set(wb.sheetnames), '予約のシートは今まで通り')
 index = {r[1]: (r[0], r[2]) for r in wb['正肉・価格表の目次'].iter_rows(min_row=2, values_only=True)}
-all_tables = {t for t in inspect(engine).get_table_names() if t.startswith(('meat_', 'price_'))}
+all_tables = {t for t in inspect(engine).get_table_names() if t.startswith(backup_export.DATA_TABLE_PREFIXES)}
 check(set(index) == all_tables - {'meat_photos'}, f'写真以外の表が全部入る（{len(index)}表）')
 check('meat_photos' not in index and not any('WFhY' in str(c) for ws in wb for row in ws.iter_rows(values_only=True) for c in row),
       '写真は入らない')
