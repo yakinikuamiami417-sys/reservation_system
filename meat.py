@@ -436,6 +436,26 @@ def lot_cattle(lot_id):
 # ============================================================
 # ④ 棚卸（毎週月曜の閉店後。月末にも1回）
 # ============================================================
+def _count_lots(period):
+    """棚卸に並べる塊（週次は週ごとに量る部位だけ）"""
+    parts = mdb.list_parts()
+    week = mdb.is_week(period)
+    weekly_ids = {p['id'] for p in parts if p.get('count_weekly', 1)}
+    lots = [l for l in mdb.lots_in_house_for_count(period) if not week or l['part_id'] in weekly_ids]
+    return parts, week, weekly_ids, lots
+
+
+@bp.route('/count/<period>/print')
+def count_print(period):
+    """冷蔵庫の前で✓を付ける紙のチェック表（A4）。あとで画面に「全部あり」→違う物だけ直す"""
+    if not _valid_period(period):
+        abort(404)
+    parts, week, weekly_ids, lots = _count_lots(period)
+    return render_template('meat/count_print.html', period=period, lots=lots, is_week=week,
+                           monthly_only=[p['name'] for p in parts if p['id'] not in weekly_ids] if week else [],
+                           printed_at=_today().isoformat())
+
+
 @bp.route('/count/<period>', methods=['GET', 'POST'])
 def count(period):
     head = mdb.get_count(period)
@@ -497,10 +517,7 @@ def count(period):
         abort(404)
     saved = {ln['lot_id']: ln['kg'] for ln in (head['lines'] if head else []) if ln['lot_id']}
     extras = [ln for ln in (head['lines'] if head else []) if not ln['lot_id']]
-    parts = mdb.list_parts()
-    week = mdb.is_week(period)
-    weekly_ids = {p['id'] for p in parts if p.get('count_weekly', 1)}
-    lots = [l for l in mdb.lots_in_house_for_count(period) if not week or l['part_id'] in weekly_ids]
+    parts, week, weekly_ids, lots = _count_lots(period)
     # 未開封の箱（納品済みのまま）は量らなくてよいので、ラベルの重さを最初から入れておく
     prefill = {l['id']: round(l['kg_now'], 2) for l in lots if l['status'] == 'received'}
     # 期間の後に使い切った塊は、その時の重さが分からないので空欄（量った値を入れる）

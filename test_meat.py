@@ -190,6 +190,14 @@ for path in ['/meat/', '/meat/?tab=held', f'/meat/lot/{a}', f'/meat/lot/{c}', '/
 check(client.get('/meat/count/2026-13').status_code == 404, 'あり得ない期間は404')
 page = client.get('/meat/count/2026-11-09').get_data(as_text=True)
 check('ホルモン は月末' not in page and '月末の棚卸だけで量ります' in page, '週次の棚卸は月末だけの部位を案内')
+check('未開封を全部「あり」' in page and 'ok-check' in page and f'data-id="{a}"' in page and 'meat_count_check.js' in page,
+      '棚卸に目視チェック（あり・全部あり・バーコード）が出る')
+res = client.get('/meat/count/2026-11-09/print')
+pr = res.get_data(as_text=True)
+check(res.status_code == 200 and '棚卸チェック表' in pr and f'#{a}' in pr and '開封・量る' in pr, '印刷用チェック表が出る')
+check(client.get('/meat/count/2026-13/print').status_code == 404, '印刷用もあり得ない期間は404')
+check(client.get('/static/meat_count_check.js').status_code == 200 and client.get('/static/vendor/zxing/zxing.min.js').status_code == 200,
+      'チェック用とバーコード読み取りのJSが配信される')
 
 # 開けた塊を量り忘れたまま確定しようとすると止める
 lot_open = mdb.get_lot(a)

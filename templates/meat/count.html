@@ -42,6 +42,22 @@
 {% endif %}
 
 {% set locked = head and head.status == 'confirmed' %}
+{# 目視チェック：✓の数で、見終わったかが分かる。紙のチェック表・バーコードでも確認できる #}
+<div class="card p-2 mb-2 check-bar">
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <div class="fw-bold">確認 <span id="ok-done" class="num fs-5">0</span> / <span id="ok-total" class="num">{{ lots|length }}</span></div>
+    <div class="progress flex-fill" style="height:10px"><div id="ok-bar" class="progress-bar bg-success" style="width:0"></div></div>
+  </div>
+  <div class="d-flex gap-1 flex-wrap">
+    {% if not locked %}
+    <button type="button" class="btn btn-success btn-sm fw-bold flex-fill" onclick="allPresent()"><i class="bi bi-check2-all"></i> 未開封を全部「あり」</button>
+    <button type="button" class="btn btn-dark btn-sm fw-bold flex-fill" onclick="openScanner()"><i class="bi bi-upc-scan"></i> バーコードで確認<span class="badge bg-warning text-dark ms-1">試し</span></button>
+    {% endif %}
+    <a href="{{ url_for('meat.count_print', period=period) }}" target="_blank" class="btn btn-outline-dark btn-sm flex-fill"><i class="bi bi-printer"></i> 印刷用チェック表</a>
+  </div>
+  <div class="muted-small mt-1">「全部あり」を押してから、無かった箱だけ「無い」に。✓はこの端末に覚えておきます（保存ボタンとは別）。</div>
+</div>
+
 <form method="post">
   {% set ns = namespace(part=None) %}
   {% for lot in lots|sort(attribute='part_sort') %}
@@ -51,7 +67,10 @@
         <span class="muted-small">評価単価 {{ '{:,}'.format(prices.get(lot.part_id, 0) or 0) }}円/kg</span></div>
     {% endif %}
     {% set unopened = lot.status == 'received' %}
-    <div class="card p-2 px-3 mb-2 {{ '' if unopened else 'border border-primary' }}" id="lotcard-{{ lot.id }}">
+    <div class="card p-2 px-3 mb-2 lot-card {{ '' if unopened else 'border border-primary' }}" id="lotcard-{{ lot.id }}"
+         data-id="{{ lot.id }}" data-unopened="{{ 1 if unopened and not lot.used_after else 0 }}"
+         data-ino="{{ lot.individual_no or '' }}" data-kg="{{ lot.label_kg or '' }}" data-serial="{{ lot.serial_no or '' }}"
+         data-name="{{ lot.part_name }} {{ lot.sub_part_name or '' }}">
       <div class="d-flex justify-content-between muted-small">
         <span>{% if lot.used_after %}<span class="badge bg-secondary">{{ lot.used_after[5:]|replace('-', '/') }}に使い切り</span>
               {% else %}<span class="badge badge-{{ lot.status }}">{{ '未開封' if unopened else '開封済み・量る' }}</span>{% endif %}
@@ -64,11 +83,12 @@
         {% else %}<span class="text-muted">個体識別番号なし</span>{% endif %}
         <span class="muted-small ms-1">{% if lot.best_before %}賞味 {{ lot.best_before[5:]|replace('-', '/') }}{% endif %}</span>
       </div>
-      <div class="d-flex gap-2 align-items-center mt-1">
-        <input name="lot_{{ lot.id }}" class="form-control num" inputmode="decimal"
+      <div class="d-flex gap-2 align-items-center mt-1 flex-wrap">
+        <input name="lot_{{ lot.id }}" class="form-control num" style="flex:1 1 6rem; min-width:5rem; max-width:9rem" inputmode="decimal"
                placeholder="{{ '' if unopened else '量った kg' }}"
                value="{{ saved.get(lot.id, prefill.get(lot.id, '')) }}" {{ 'disabled' if locked }}>
-        <label class="text-nowrap muted-small"><input type="checkbox" name="lot_{{ lot.id }}_missing" value="1" {{ 'disabled' if locked }}> 無い</label>
+        <label class="text-nowrap fw-bold ok-label"><input type="checkbox" class="ok-check form-check-input" data-id="{{ lot.id }}" {{ 'disabled' if locked }}> あり</label>
+        <label class="text-nowrap muted-small"><input type="checkbox" class="missing-check" name="lot_{{ lot.id }}_missing" value="1" {{ 'disabled' if locked }}> 無い</label>
         {% if unopened and meat_is_admin and not locked %}
         <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" onclick="backToHeld({{ lot.id }}, this)"
                 title="まだ届いていない塊を目利き（業者預け）に戻す"><i class="bi bi-arrow-return-left"></i> 目利きに戻す</button>
@@ -125,7 +145,39 @@
 </form>
 {% endblock %}
 {% block bottom %}{% endblock %}
+{% block head %}
+<style>
+  .check-bar { position: sticky; top: 52px; z-index: 900; }
+  .lot-card.is-ok { background: #eaf6ee; }
+  .lot-card.is-missing { background: #f3f3f3; opacity: .75; }
+  .lot-card.flash { outline: 3px solid #198754; }
+  .ok-label input { width: 1.4em; height: 1.4em; vertical-align: -.3em; }
+  #scanner { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 2000; display: none; flex-direction: column; color: #fff; overflow-y: auto; }
+  #scanner.on { display: flex; }
+  #scanner video { width: 100%; max-height: 55vh; object-fit: cover; background: #000; display: block; }
+  #scan-msg { min-height: 4.5em; font-size: 1.05rem; }
+  #scan-msg.ok { color: #7dffa8; } #scan-msg.ng { color: #ffb4b4; } #scan-msg.warn { color: #ffe08a; }
+  .scan-frame { position: absolute; left: 6%; right: 6%; top: 38%; height: 24%; border: 3px solid #ffd54a; border-radius: 8px; pointer-events: none; }
+</style>
+{% endblock %}
 {% block scripts %}
+{# バーコード読み取り画面【試し】 #}
+<div id="scanner">
+  <div class="d-flex align-items-center p-2">
+    <div class="fw-bold"><i class="bi bi-upc-scan"></i> バーコードで確認 <span class="small">確認 <span id="scan-count">0</span> / {{ lots|length }}</span></div>
+    <button type="button" class="btn btn-light btn-sm ms-auto fw-bold" onclick="closeScanner()">閉じる</button>
+  </div>
+  <div class="position-relative"><video id="scan-video" playsinline muted></video><div class="scan-frame"></div></div>
+  <div class="p-3">
+    <div id="scan-msg">ラベルのバーコード（横長の線）を黄色い枠に入れてください。段が分かれているラベルは、番号の入った段を読みます。</div>
+    <div class="d-flex gap-2 mt-2">
+      <input id="scan-manual" class="form-control num" inputmode="numeric" placeholder="読めない時：個体識別番号の下4桁">
+      <button type="button" class="btn btn-warning fw-bold text-nowrap" onclick="manualFind()">探す</button>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='vendor/zxing/zxing.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='meat_count_check.js') }}?v=1" defer data-period="{{ period }}" id="count-check-js"></script>
 <script>
 // 選んだ部位に合わせて、数量欄の見本を kg／パック に変える
 function extraUnit(sel) {

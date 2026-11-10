@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ period_label(period) }} 棚卸チェック表 | キリン屋</title>
+<style>
+  @page { size: A4 portrait; margin: 12mm 10mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Yu Gothic", "Hiragino Sans", "Meiryo", sans-serif; color: #000; background: #fff;
+         margin: 0; padding: 16px; font-size: 11pt; }
+  h1 { font-size: 15pt; margin: 0 0 2mm; }
+  .head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #000;
+          padding-bottom: 2mm; margin-bottom: 2mm; }
+  .head .fill { font-size: 10.5pt; }
+  .head .fill span { display: inline-block; min-width: 32mm; border-bottom: 1px solid #000; }
+  .how { font-size: 9pt; margin: 0 0 3mm; line-height: 1.5; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #555; padding: 1.6mm 1.5mm; vertical-align: middle; }
+  th { background: #eee; font-size: 9pt; font-weight: 700; }
+  td.box { width: 11mm; text-align: center; font-size: 16pt; line-height: 1; }
+  td.no { width: 11mm; text-align: right; font-weight: 700; }
+  td.kg { width: 17mm; text-align: right; font-variant-numeric: tabular-nums; }
+  td.w { width: 22mm; }
+  td.ino { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.ino b { font-size: 13pt; }
+  tr.part td { background: #f4f4f4; font-weight: 700; border-top: 2px solid #000; font-size: 10pt; }
+  tr { page-break-inside: avoid; }
+  .tag { font-size: 8pt; border: 1px solid #000; border-radius: 2px; padding: 0 2px; white-space: nowrap; }
+  .tag.open { background: #000; color: #fff; }
+  .sub { font-size: 8.5pt; }
+  .extra td { height: 9mm; }
+  .noprint { margin-bottom: 12px; display: flex; gap: 8px; }
+  .noprint button, .noprint a { font-size: 15px; padding: 8px 16px; border-radius: 8px; border: 1px solid #333;
+                                 background: #fff; color: #000; text-decoration: none; cursor: pointer; }
+  .noprint button { background: #8B1A1A; color: #fff; border-color: #8B1A1A; font-weight: 700; }
+  @media print { body { padding: 0; } .noprint { display: none; } }
+</style>
+</head>
+<body>
+<div class="noprint">
+  <button onclick="window.print()">印刷する</button>
+  <a href="{{ url_for('meat.count', period=period) }}">‹ 棚卸の画面へ戻る</a>
+</div>
+
+<div class="head">
+  <div>
+    <h1>{{ period_label(period) }} 棚卸チェック表（正肉）</h1>
+    <div class="sub">印刷 {{ printed_at }} ・ {{ lots|length }}本 ・ {{ '毎週月曜の閉店後' if is_week else '月末の閉店後' }}</div>
+  </div>
+  <div class="fill">担当 <span></span>　時刻 <span style="min-width:18mm"></span></div>
+</div>
+<p class="how">
+  <b>未開封</b>：箱があれば「あり」に✓、無ければ「無い」に✓（重さは量らなくてよい）。
+  <b>開封</b>（黒い札）：量って「量ったkg」に書く。使い切っていれば「無い」に✓。<br>
+  画面への入力：「未開封を全部あり」を押してから、<b>✓が付かなかった物（無い・重さ）だけ</b>直します。
+  {% if monthly_only %}<br>週次では {{ monthly_only|join('・') }} は量りません（月末だけ）。{% endif %}
+</p>
+
+<table>
+  <thead>
+    <tr><th>あり</th><th>無い</th><th>番号</th><th>品名</th><th>個体識別番号</th><th>賞味</th><th>ラベル・前回</th><th>量ったkg</th></tr>
+  </thead>
+  <tbody>
+  {% set ns = namespace(part=None) %}
+  {% for lot in lots|sort(attribute='part_sort') %}
+    {% if lot.part_name != ns.part %}
+      {% set ns.part = lot.part_name %}
+      <tr class="part"><td colspan="8">{{ lot.part_name }}</td></tr>
+    {% endif %}
+    {% set unopened = lot.status == 'received' %}
+    <tr>
+      <td class="box">□</td>
+      <td class="box">□</td>
+      <td class="no">#{{ lot.id }}</td>
+      <td>{% if not unopened %}<span class="tag open">開封・量る</span> {% endif %}{% if lot.used_after %}<span class="tag">{{ lot.used_after[5:]|replace('-', '/') }}使い切り</span> {% endif %}<span class="sub">{{ lot.sub_part_name or lot.label_item_name or '' }}</span></td>
+      <td class="ino">{% if lot.individual_no %}{{ lot.individual_no[:-4] }}<b>{{ lot.individual_no[-4:] }}</b>{% else %}—{% endif %}</td>
+      <td class="sub">{{ lot.best_before[5:]|replace('-', '/') if lot.best_before else '' }}</td>
+      <td class="kg">{{ '%.2f'|format(lot.kg_now) }}</td>
+      <td class="w">{{ '' if not unopened or lot.used_after else '—' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8">店内にある塊はありません。</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2 style="font-size:11pt; margin:5mm 0 1mm">一覧に無い分（捌いた肉を部位ごとにまとめた分・端材・一覧に無かった箱）</h2>
+<table class="extra">
+  <thead><tr><th style="width:40mm">部位</th><th style="width:22mm">商品化／原料</th><th style="width:22mm">kg・パック</th><th>メモ（個体番号の下4桁など）</th></tr></thead>
+  <tbody>{% for _ in range(6) %}<tr><td></td><td></td><td></td><td></td></tr>{% endfor %}</tbody>
+</table>
+</body>
+</html>
