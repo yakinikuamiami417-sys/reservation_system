@@ -50,12 +50,12 @@
   </div>
   <div class="d-flex gap-1 flex-wrap">
     {% if not locked %}
-    <button type="button" class="btn btn-success btn-sm fw-bold flex-fill" onclick="allPresent()"><i class="bi bi-check2-all"></i> 未開封を全部「あり」</button>
+    <button type="button" class="btn btn-success btn-sm fw-bold flex-fill" onclick="allPresent()"><i class="bi bi-check2-all"></i> 未開封を全部「目視」</button>
     <button type="button" class="btn btn-dark btn-sm fw-bold flex-fill" onclick="openScanner()"><i class="bi bi-upc-scan"></i> バーコードで確認<span class="badge bg-warning text-dark ms-1">試し</span></button>
     {% endif %}
     <a href="{{ url_for('meat.count_print', period=period) }}" target="_blank" class="btn btn-outline-dark btn-sm flex-fill"><i class="bi bi-printer"></i> 印刷用チェック表</a>
   </div>
-  <div class="muted-small mt-1">「全部あり」を押してから、無かった箱だけ「無い」に。✓はこの端末に覚えておきます（保存ボタンとは別）。</div>
+  <div class="muted-small mt-1">「目視」＝冷蔵庫で箱を目で確かめた印です（保存はされず、この端末だけに残ります）。数えるのは重さの欄です。「全部目視」は、箱を番号で確かめてから押し、無かった箱だけ「無い」に。</div>
 </div>
 
 <form method="post">
@@ -87,7 +87,7 @@
         <input name="lot_{{ lot.id }}" class="form-control num" style="flex:1 1 6rem; min-width:5rem; max-width:9rem" inputmode="decimal"
                placeholder="{{ '' if unopened else '量った kg' }}"
                value="{{ saved.get(lot.id, prefill.get(lot.id, '')) }}" {{ 'disabled' if locked }}>
-        <label class="text-nowrap fw-bold ok-label"><input type="checkbox" class="ok-check form-check-input" data-id="{{ lot.id }}" {{ 'disabled' if locked }}> あり</label>
+        <label class="text-nowrap fw-bold ok-label"><input type="checkbox" class="ok-check form-check-input" data-id="{{ lot.id }}" {{ 'disabled' if locked }}> 目視</label>
         <label class="text-nowrap muted-small"><input type="checkbox" class="missing-check" name="lot_{{ lot.id }}_missing" value="1" {{ 'disabled' if locked }}> 無い</label>
         {% if unopened and meat_is_admin and not locked %}
         <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" onclick="backToHeld({{ lot.id }}, this)"

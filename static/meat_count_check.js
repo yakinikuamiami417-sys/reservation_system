@@ -1,4 +1,4 @@
-// 棚卸の目視チェック（あり・無い）と、バーコード（GS1-128）での確認【試し】
+// 棚卸の目視チェック（目視・無い）と、バーコード（GS1-128）での確認【試し】
 // ✓はこの端末だけに覚える（棚卸の保存とは別。保存されるのは「無い」と重さだけ）
 
 // ------------------------------------------------------------
@@ -106,7 +106,7 @@ if (typeof document !== 'undefined') {
       saveOk(); refresh();
     }
   });
-  // 開けた塊は、重さを入れたら「あり」にする
+  // 開けた塊は、重さを入れたら「目視」にする
   document.addEventListener('input', e => {
     const c = e.target.closest && e.target.closest('.lot-card');
     if (c && e.target.name === 'lot_' + c.dataset.id && e.target.value.trim() && c.dataset.unopened === '0') setOk(c.dataset.id, true);
@@ -120,7 +120,7 @@ if (typeof document !== 'undefined') {
     }
     saveOk(); refresh();
     const left = cards.filter(c => c.dataset.unopened === '0' && !okIds.has(c.dataset.id) && !missOf(c).checked).length;
-    alert(`未開封 ${n} 本を「あり」にしました。` +
+    alert(`未開封 ${n} 本を「目視」にしました。` +
           (left ? `\n開封済み・使い切りの ${left} 本は、量って重さを入れてください。` : '') +
           '\n無かった箱だけ「無い」に✓を付けてください。');
   };
@@ -150,7 +150,7 @@ if (typeof document !== 'undefined') {
     const c = cardOf(lot.id);
     c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 1500);
     const note = r.kgDiffers ? `<br><span style="color:#ffe08a">重さが登録（${f2(lot.kg)}kg）と違います：バーコード ${f2(r.kg)}kg</span>` : '';
-    say(r.already ? 'warn' : 'ok', (r.already ? '読み済み：' : '✓ あり：') +
+    say(r.already ? 'warn' : 'ok', (r.already ? '読み済み：' : '✓ 目視：') +
         `#${lot.id} ${lot.name} ${r.kg != null ? f2(r.kg) + 'kg' : ''}` + note);
   }
 
@@ -182,7 +182,7 @@ if (typeof document !== 'undefined') {
     }
     setOk(hits[0].dataset.id, true);
     $('scan-manual').value = '';
-    say('ok', `✓ あり：#${hits[0].dataset.id} ${hits[0].dataset.name}`);
+    say('ok', `✓ 目視：#${hits[0].dataset.id} ${hits[0].dataset.name}`);
   };
 
   let stream = null, loopOn = false, zx = null, lastRaw = '', lastAt = 0;

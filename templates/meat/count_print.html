@@ -51,15 +51,15 @@
   <div class="fill">担当 <span></span>　時刻 <span style="min-width:18mm"></span></div>
 </div>
 <p class="how">
-  <b>未開封</b>：箱があれば「あり」に✓、無ければ「無い」に✓（重さは量らなくてよい）。
+  <b>未開封</b>：箱があれば「目視」に✓、無ければ「無い」に✓（重さは量らなくてよい）。
   <b>開封</b>（黒い札）：量って「量ったkg」に書く。使い切っていれば「無い」に✓。<br>
-  画面への入力：「未開封を全部あり」を押してから、<b>✓が付かなかった物（無い・重さ）だけ</b>直します。
+  画面への入力：「未開封を全部目視」を押してから、<b>✓が付かなかった物（無い・重さ）だけ</b>直します。
   {% if monthly_only %}<br>週次では {{ monthly_only|join('・') }} は量りません（月末だけ）。{% endif %}
 </p>
 
 <table>
   <thead>
-    <tr><th>あり</th><th>無い</th><th>番号</th><th>品名</th><th>個体識別番号</th><th>賞味</th><th>ラベル・前回</th><th>量ったkg</th></tr>
+    <tr><th>目視</th><th>無い</th><th>番号</th><th>品名</th><th>個体識別番号</th><th>賞味</th><th>ラベル・前回</th><th>量ったkg</th></tr>
   </thead>
   <tbody>
   {% set ns = namespace(part=None) %}

@@ -190,8 +190,8 @@ for path in ['/meat/', '/meat/?tab=held', f'/meat/lot/{a}', f'/meat/lot/{c}', '/
 check(client.get('/meat/count/2026-13').status_code == 404, 'あり得ない期間は404')
 page = client.get('/meat/count/2026-11-09').get_data(as_text=True)
 check('ホルモン は月末' not in page and '月末の棚卸だけで量ります' in page, '週次の棚卸は月末だけの部位を案内')
-check('未開封を全部「あり」' in page and 'ok-check' in page and f'data-id="{a}"' in page and 'meat_count_check.js' in page,
-      '棚卸に目視チェック（あり・全部あり・バーコード）が出る')
+check('未開封を全部「目視」' in page and '> 目視</label>' in page and 'ok-check' in page and f'data-id="{a}"' in page and 'meat_count_check.js' in page,
+      '棚卸に目視チェック（目視・全部目視・バーコード）が出る')
 res = client.get('/meat/count/2026-11-09/print')
 pr = res.get_data(as_text=True)
 check(res.status_code == 200 and '棚卸チェック表' in pr and f'#{a}' in pr and '開封・量る' in pr, '印刷用チェック表が出る')
@@ -346,7 +346,7 @@ check(amounts == {'ブタカタ': 6500, 'ウインナー': 822, 'ハム': 596, '
 check(client.get('/meat/').status_code == 200 and client.get('/meat/closing/2027-04').status_code == 200, '在庫・原価の画面が開く')
 
 # ---- 締めを解除 ----
-import json
+import json, re
 import meat as meat_module
 pid_buta = added['ブタカタ']['id']
 def count_and_close(period, kg):
@@ -487,6 +487,19 @@ check(mdb.get_count('2026-09')['status'] == 'draft' and '決まっていない�
 client.post('/meat/count/2026-09', data=_cform('confirm', {f'lot_{L_b}': '３．５'}))
 check(mdb.get_count('2026-09')['status'] == 'confirmed' and mdb.get_lot(L_b)['current_kg'] == 3.5,
       '全角の数字（３．５）も読んで確定できる')
+
+# ---- 一時保存の後に開き直しても、「無い」にした箱へ重さを戻さない ----
+mdb.purchase_direct(_sup2, '', '2026-08-05', [{'part_id': offal['アキレス']['id'], 'kg': 2.0, 'unit_price': 1300}], 'test')
+L_c = next(l['id'] for l in mdb.lots_in_house_for_count('2026-08') if l['part_id'] == offal['アキレス']['id'])
+h = client.get('/meat/count/2026-08').get_data(as_text=True)
+check(f'name="lot_{L_c}"' in h and 'value="2.0"' in h, '初めて開いた時は未開封の箱にラベルの重さが入る')
+client.post('/meat/count/2026-08', data={'action': 'save', 'extra_count': '0', f'lot_{L_c}': '', f'lot_{L_c}_missing': '1'})
+h = client.get('/meat/count/2026-08').get_data(as_text=True)
+m = re.search(rf'name="lot_{L_c}"[^>]*value="([^"]*)"', h, re.S)
+check(m and m.group(1) == '', '一時保存の後に開き直すと、「無い」にした箱の重さは空欄のまま')
+r = client.post('/meat/count/2026-08', data={'action': 'confirm', 'extra_count': '0', f'lot_{L_c}': ''}, follow_redirects=True)
+check(mdb.get_count('2026-08')['status'] == 'draft' and mdb.get_lot(L_c)['status'] == 'received',
+      '空欄のまま確定しようとすると止まる（在庫に残したまま確定しない）')
 
 from database import engine
 engine.dispose()

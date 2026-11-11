@@ -502,7 +502,7 @@ def _count_lots(period):
 
 @bp.route('/count/<period>/print')
 def count_print(period):
-    """冷蔵庫の前で✓を付ける紙のチェック表（A4）。あとで画面に「全部あり」→違う物だけ直す"""
+    """冷蔵庫の前で✓を付ける紙のチェック表（A4）。あとで画面に「全部目視」→違う物だけ直す"""
     if not _valid_period(period):
         abort(404)
     parts, week, weekly_ids, lots = _count_lots(period)
@@ -577,7 +577,9 @@ def count(period):
     extras = [ln for ln in (head['lines'] if head else []) if not ln['lot_id']]
     parts, week, weekly_ids, lots = _count_lots(period)
     # 未開封の箱（納品済みのまま）は量らなくてよいので、ラベルの重さを最初から入れておく
-    prefill = {l['id']: round(l['kg_now'], 2) for l in lots if l['status'] == 'received'}
+    # 未開封の箱にはラベル（前回）の重さを入れておく。ただし一時保存の後は入れない：一時保存では「無い」が残らないので、
+    # 開き直すと「無い」にした箱に重さが戻り、そのまま確定すると在庫に残ってしまう（2026-11-11）。空欄なら確定の時に止まる
+    prefill = {} if head else {l['id']: round(l['kg_now'], 2) for l in lots if l['status'] == 'received'}
     # 期間の後に使い切った塊は、その時の重さが分からないので空欄（量った値を入れる）
     _, end = mdb.period_bounds(period)
     is_past = end <= _today().isoformat()
