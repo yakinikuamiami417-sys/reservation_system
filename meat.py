@@ -1,7 +1,7 @@
 # meat.py — 正肉の仕入・在庫管理の画面（Flask Blueprint）
 # 見るのはログインした全員（仕入単価・原価も社内公開：2026-10-26 確認）。
 # 登録・修正・月の締めは管理者パスワード（MEAT_ADMIN_PASSWORD）を入れた時だけできる。
-import csv, io, os, base64, time
+import csv, io, os, base64, time, unicodedata
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
@@ -89,8 +89,9 @@ def lookup_cattle(individual_nos):
 
 
 def _float(v):
+    """数字を読む。全角（２３．２）も読む"""
     try:
-        return float(str(v).replace(',', '').strip())
+        return float(unicodedata.normalize('NFKC', str(v)).replace(',', '').strip())
     except (TypeError, ValueError):
         return None
 
@@ -546,14 +547,17 @@ def count(period):
             forgot = [f'{l["part_name"]} #{l["id"]}' for l in mdb.list_lots(('processed',))
                       if l['id'] not in missing and l['part_id'] not in counted_parts
                       and f'lot_{l["id"]}' in f]
-            # 未開封の箱と、期間の後に使い切った塊（さかのぼりの時）は、空欄を0kgとして数えない
-            blank = [f'{l["part_name"]} #{l["id"]}' for l in mdb.lots_in_house_for_count(period)
-                     if (l['status'] == 'received' or l.get('used_after'))
-                     and l['id'] not in missing and f'lot_{l["id"]}' in f and not f.get(f'lot_{l["id"]}', '').strip()]
-            if blank:
+            # 一覧の塊は1つ残らず「重さ（ある）」か「無い」にしてから確定する。どちらでもない塊（空欄・読めない数字）が
+            # あると、使い切りにも在庫にもならずに次の期間へ残ってしまう（2026-11-11 トモバラ #7 の件）
+            counted = {ln['lot_id'] for ln in lines if ln.get('lot_id')}
+            undecided = [l for l in mdb.lots_in_house_for_count(period)
+                         if f'lot_{l["id"]}' in f and l['id'] not in missing and l['id'] not in counted]
+            if undecided:
                 mdb.save_count(period, lines, staff_name())
-                flash('重さが空欄の未開封の箱があります：' + '、'.join(blank) +
-                      '。空欄は0kgとして数えません。重さを入れるか、その時に無かったなら「無い」にしてください（一時保存しました）', 'warning')
+                names = [f'{l["part_name"]} #{l["id"]}' + (f'（{l["individual_no"]}）' if l.get('individual_no') else '')
+                         for l in undecided]
+                flash('まだ「ある（重さ）」か「無い」が決まっていない塊があります：' + '、'.join(names) +
+                      '。重さを数字で入れるか、その時に無かったなら「無い」にしてください（一時保存しました）', 'warning')
                 return redirect(url_for('meat.count', period=period))
             if forgot:
                 mdb.save_count(period, lines, staff_name())

@@ -459,6 +459,35 @@ check('前繰 6.2kg ＋ 今月の仕入 3.7kg' in h and f'{(_ms - _td(days=1)).m
       '在庫の画面に前繰と今月の仕入が出る')
 check(f'仕入 {_ms.month}/1' in h, '今月の塊には仕入日が出る')
 
+# ---- 棚卸を確定し直した時の「無い」（2026-11-11 トモバラ #7 の件）と、決まっていない塊で止める ----
+_sup2 = mdb.get_or_create_supplier('テスト確定し直し')
+mdb.purchase_direct(_sup2, '', '2026-09-05', [{'part_id': offal['大腸']['id'], 'kg': 5.0, 'unit_price': 1200},
+                                              {'part_id': offal['直腸']['id'], 'kg': 4.0, 'unit_price': 1200}], 'test')
+_oct = [l for l in mdb.lots_in_house_for_count('2026-09') if l['supplier_id'] == _sup2]
+L_a = next(l['id'] for l in _oct if l['part_id'] == offal['大腸']['id'])
+L_b = next(l['id'] for l in _oct if l['part_id'] == offal['直腸']['id'])
+def _cform(action, extra=None):
+    d = {'action': action, 'extra_count': '0'}
+    for l in mdb.lots_in_house_for_count('2026-09'):
+        d[f'lot_{l["id"]}'] = str(l['kg_now'])
+    d.update(extra or {})
+    return d
+client.post('/meat/count/2026-09', data=_cform('confirm'))
+check(mdb.get_count('2026-09')['status'] == 'confirmed', '（前提）1回目の確定')
+client.post('/meat/count/2026-09', data={'action': 'unlock'})
+client.post('/meat/count/2026-09', data=_cform('confirm', {f'lot_{L_a}': '', f'lot_{L_a}_missing': '1'}))
+check(mdb.get_count('2026-09')['status'] == 'confirmed', '（前提）確定し直せた')
+check(mdb.get_lot(L_a)['status'] == 'consumed', '確定し直しで「無い」にした塊は使い切りになる（1回目の確定の記録で止めない）')
+check(all(ln['lot_id'] != L_a for ln in mdb.get_count('2026-09')['lines']), '「無い」にした塊は棚卸の行に残らない')
+
+client.post('/meat/count/2026-09', data={'action': 'unlock'})
+r = client.post('/meat/count/2026-09', data=_cform('confirm', {f'lot_{L_b}': '4.0kg'}), follow_redirects=True)
+check(mdb.get_count('2026-09')['status'] == 'draft' and '決まっていない塊' in r.get_data(as_text=True)
+      and f'#{L_b}' in r.get_data(as_text=True), '読めない重さの塊があれば確定しないで番号を知らせる')
+client.post('/meat/count/2026-09', data=_cform('confirm', {f'lot_{L_b}': '３．５'}))
+check(mdb.get_count('2026-09')['status'] == 'confirmed' and mdb.get_lot(L_b)['current_kg'] == 3.5,
+      '全角の数字（３．５）も読んで確定できる')
+
 from database import engine
 engine.dispose()
 try:

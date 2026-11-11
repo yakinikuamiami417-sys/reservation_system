@@ -991,12 +991,16 @@ def lots_in_house_for_count(period):
     return lots
 
 
-def _changed_after(con, lot_id, end):
-    """期間の後に、量った・捌いた・使い切った記録がある塊か（さかのぼりの棚卸で今の重さを上書きしないため）"""
+def _changed_after(con, lot_id, end, period=None):
+    """期間の後に、量った・捌いた・使い切った記録がある塊か（さかのぼりの棚卸で今の重さを上書きしないため）。
+    同じ期間の棚卸を前に確定した時の記録は数えない（2026-11-11 不具合：10月の棚卸を確定し直した時、
+    1回目の確定で残った「量った」記録のせいで「無い」にした塊が使い切りにならず、次の週に残った）"""
+    own = (f'{period} 棚卸', f'{period} 棚卸で見つからず') if period else ('', '')
     return bool(con.execute(text("""
         SELECT COUNT(*) FROM meat_lot_events
         WHERE lot_id = :l AND logged_at >= :end AND event_type IN ('weigh', 'process', 'consume')
-    """), {'l': lot_id, 'end': end}).scalar())
+          AND COALESCE(memo, '') NOT IN (:m1, :m2)
+    """), {'l': lot_id, 'end': end, 'm1': own[0], 'm2': own[1]}).scalar())
 
 
 def reclassify_lot(lot_id, new_part_id, staff, memo=''):
@@ -1240,7 +1244,7 @@ def save_count(period, lines, staff, confirm=False, missing_lot_ids=()):
             _, end = period_bounds(period)
             # さかのぼりの棚卸：期間の後に動きのあった塊は、今の重さ・状態を変えない（棚卸の行だけ残す）
             later = {lid for lid in {ln.get('lot_id') for ln in lines} | set(missing_lot_ids)
-                     if lid and _changed_after(con, lid, end)}
+                     if lid and _changed_after(con, lid, end, period)}
             lines = [ln for ln in lines if ln.get('lot_id') not in later]
             missing_lot_ids = [lid for lid in missing_lot_ids if lid not in later]
             for ln in lines:
