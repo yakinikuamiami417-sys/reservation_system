@@ -83,7 +83,7 @@ check(mdb.resolve_alias('牛カッパ') == (parts['トモバラ'], 'カッパ'),
 check(mdb.resolve_alias('ネクタイ') == (None, None), '知らない品名は部位なし')
 mdb.learn_alias('ネクタイ', '東和食品', parts['クラシタ'])
 check(mdb.resolve_alias('ネクタイ', '東和食品')[0] == parts['クラシタ'], '人が選んだ部位を覚える')
-check(len(mdb.list_menu_map()) == 93, 'グラム表（93行）を初期データに取り込み')
+check(len(mdb.list_menu_map()) == 93 + 2, 'グラム表（93行）＋モツ味噌煮込み（2行）を初期データに取り込み')
 check(mdb.match_menu('特選カルビ（ヘッドバラ）タレ', ['特選カルビ（ヘッドバラ）', 'ロース']) == ('特選カルビ（ヘッドバラ）', 1),
       'マジレジの「タレ」付き商品名をメニューに突き合わせ')
 check(mdb.match_menu('特選ロース', ['特選ロース', 'ロース']) == ('特選ロース', 1), '最長一致（ロース と 特選ロース）')
@@ -396,6 +396,24 @@ count_and_close('2027-05', 8)
 row = lambda period: next(r for r in mdb.compute_closing(period)['rows'] if r['part_id'] == pid_buta)
 check(closed('2027-05') and row('2027-05')['closing_kg'] == 8, '直して締め直すと新しい数字になる')
 check(row('2027-06')['opening_kg'] == 8, '次の月の前繰も新しい数字になる')
+
+# ---- マルイチの内臓（部位は別々・原価は集計分類でまとめる） ----
+before = len(mdb.list_parts())
+mdb.init_meat_db()
+check(len(mdb.list_parts()) == before, '（内臓）もう一度初期化しても部位は増えない')
+offal = {p['name']: p for p in mdb.list_parts()}
+grp = mdb.part_groups()
+check(all(n in offal for n in ('ハツ', 'レバー', 'センマイ', 'ハチノス', '大腸', '直腸', 'アキレス', '赤センマイ', 'ギアラ',
+                                mdb.NIKOMI_COOKED)), 'マルイチの内臓が部位に入る')
+check(grp[offal['ハチノス']['id']]['rep'] == offal['センレバハツ']['id'], 'ハツ・レバー・センマイ・ハチノスはセンレバハツにまとまる')
+check(grp[offal['大腸']['id']]['group'] == '煮込み用モツ' and grp[offal[mdb.NIKOMI_COOKED]['id']]['group'] == '煮込み用モツ',
+      '煮込みの内臓と仕込み済みは煮込み用モツにまとまる')
+check(all(offal[n]['count_weekly'] == 0 for n in ('ハツ', '大腸', mdb.NIKOMI_COOKED)), '内臓は月末だけ数える')
+nikomi = {m['part_name']: m['grams_per_serving'] for m in mdb.list_menu_map() if m['menu_name'] == 'モツ味噌煮込み'}
+check(nikomi == {'センレバハツ': 29, '煮込み用モツ': 69}, 'モツ味噌煮込みのグラム表（ハチノス分はセンレバハツ）')
+vp = mdb.valuation_prices('2027-08')
+check(vp[offal['ハチノス']['id']] == 1000 and vp[offal['赤センマイ']['id']] == 2600,
+      '仕入の無い内臓は同じ分類の最後の単価ではなく価格表の値段で評価する')
 
 from database import engine
 engine.dispose()

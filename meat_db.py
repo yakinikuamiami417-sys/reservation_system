@@ -275,6 +275,7 @@ def init_meat_db():
     _add_cost_group_column()
     _split_udemomo()
     _add_count_only_parts()
+    _add_offal_parts()
     price_db.init_price_db()
     _sync_price_items()
 
@@ -313,6 +314,49 @@ def _add_count_only_parts():
                 INSERT INTO meat_parts (name, category, default_supplier_id, min_stock_kg, sort_order, count_weekly)
                 VALUES (:n, :c, :s, 0, :o, 0) ON CONFLICT (name) DO NOTHING
             """), {'n': name, 'c': category, 's': sid, 'o': order})
+
+
+# 2026-11-11 社長：内臓の2社目「マルイチ」は内臓ごとに単価が違う（イシマルはセンレバハツ一括3,000円）。
+# 部位は別々に登録し、原価は集計分類でまとめる（ウデ・モモと同じ仕組み）。すべて月末だけ数える・下限0。
+# ハチノスは焼肉メニュー（ハチノス 塩/タレ）にも使うので「センレバハツ」側に入れる。
+# モツ味噌煮込みは「煮込み用モツ」にまとめ、煮込み済みの残りは生の重さに直して数える（1食＝生0.1kg）
+NIKOMI_GROUP = '煮込み用モツ'
+NIKOMI_COOKED = 'モツ煮込み（仕込み済み・1食＝0.1kg）'
+# (部位, 集計分類, 並び順, 単価円/kg)
+OFFAL_PARTS = [
+    ('ハツ',       'センレバハツ', 11, 2000),
+    ('レバー',     'センレバハツ', 12, 2000),
+    ('センマイ',   'センレバハツ', 13, 1900),
+    ('ハチノス',   'センレバハツ', 14, 1000),
+    ('大腸',       NIKOMI_GROUP,   41, 1200),
+    ('直腸',       NIKOMI_GROUP,   42, 1200),
+    ('アキレス',   NIKOMI_GROUP,   43, 1300),
+    ('赤センマイ', NIKOMI_GROUP,   44, 2600),
+    ('ギアラ',     NIKOMI_GROUP,   45, 1600),
+    (NIKOMI_COOKED, NIKOMI_GROUP,  46, 1300),   # 前回の仕込みの生モツ平均 約1,291円/kg
+]
+OFFAL_SUPPLIER = 'マルイチ'
+# 前回の仕込み（ハチノス1.0・赤センマイ0.3・大腸0.8・直腸0.4・アキレス0.9kg、約35食）を1食あたりに直したもの
+NIKOMI_MENU = 'モツ味噌煮込み'
+NIKOMI_MENU_GRAMS = {'センレバハツ': 29, NIKOMI_GROUP: 69}
+
+
+def _add_offal_parts():
+    """マルイチの内臓とモツ味噌煮込みのグラム表を足す。既にあれば触らない（何度動いても同じ結果）"""
+    with engine.begin() as con:
+        con.execute(text('INSERT INTO meat_suppliers (name) VALUES (:n) ON CONFLICT (name) DO NOTHING'),
+                    {'n': OFFAL_SUPPLIER})
+        sid = con.execute(text('SELECT id FROM meat_suppliers WHERE name = :n'), {'n': OFFAL_SUPPLIER}).scalar()
+        for name, group, order, _ in OFFAL_PARTS:
+            con.execute(text("""
+                INSERT INTO meat_parts (name, category, default_supplier_id, min_stock_kg, sort_order, count_weekly,
+                                        cost_group)
+                VALUES (:n, '内臓', :s, 0, :o, 0, :g) ON CONFLICT (name) DO NOTHING
+            """), {'n': name, 's': sid, 'o': order, 'g': group})
+        has_menu = con.execute(text('SELECT COUNT(*) FROM meat_menu_map WHERE menu_name = :m'),
+                               {'m': NIKOMI_MENU}).scalar()
+    if not has_menu:
+        set_menu_parts(NIKOMI_MENU, NIKOMI_MENU_GRAMS)
 
 
 # 週次の棚卸で量る部位（金額の大きい部位）。それ以外は月末だけ量る（2026-10-29 決定）
@@ -1078,7 +1122,9 @@ def valuation_prices(period):
     prices = {}
     for p in parts:
         g = groups[p['id']]['group']
-        price = (own.get(p['id']) or group_last.get(g) or base.get(p['id'])
+        # 同じ分類の最後の単価で代わりにするのはウデモモだけ。内臓は単価の差が大きい（ハチノス1,000円と
+        # センレバハツ3,000円）ので、仕入の無い部位は価格表の値段を使う
+        price = (own.get(p['id']) or (group_last.get(g) if g == UDEMOMO_GROUP else None) or base.get(p['id'])
                  or DEFAULT_UNIT_PRICES.get(p['name']) or DEFAULT_UNIT_PRICES.get(g))
         if price:
             prices[p['id']] = price
@@ -1093,6 +1139,7 @@ DEFAULT_UNIT_PRICES = {
     'ヒレ': 11000, 'サーロイン': 7500, 'ブタ': 1600, 'テール': 2000,   # テールは2026-10-29 社長回答
     'ブタカタ': 1000,                                  # 円/kg
     'ウインナー': 274, 'ハム': 298, 'ベーコン': 298,   # 円/パック（PACK_PARTS）
+    **{name: price for name, _, _, price in OFFAL_PARTS},   # マルイチの内臓（2026-11-11 社長）
 }
 
 
