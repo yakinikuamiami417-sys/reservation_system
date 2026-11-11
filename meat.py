@@ -693,6 +693,7 @@ def closing(period):
     prev_loss = {r['part_id']: r['loss_rate'] for r in prev['rows']}
     prev_menu = {m['menu_name']: m['cost'] for m in prev['menus'] if m['complete'] and m['cost']}
     return render_template('meat/closing.html', r=result, period=period, prev_period=mdb.prev_period(period),
+                           opening_p=mdb.opening_period(period),
                            next_period=mdb.next_period(period), is_week=mdb.is_week(period),
                            prev_cost=prev_cost, prev_loss=prev_loss, prev_menu=prev_menu,
                            reopens=mdb.list_closing_reopens(period))

@@ -501,6 +501,32 @@ r = client.post('/meat/count/2026-08', data={'action': 'confirm', 'extra_count':
 check(mdb.get_count('2026-08')['status'] == 'draft' and mdb.get_lot(L_c)['status'] == 'received',
       '空欄のまま確定しようとすると止まる（在庫に残したまま確定しない）')
 
+# ---- 前の週に棚卸が無い時は、月末の棚卸の翌日から数える（11/2の週を飛ばして 11/1〜11/9） ----
+# 2027-01-31 は日曜。1月末の棚卸を確定し、2/1(月)の週は棚卸なし → 2/8(月)の週は 2/1〜2/8
+_supw = mdb.get_or_create_supplier('テスト週つなぎ')
+mdb.purchase_direct(_supw, '', '2027-01-20', [{'part_id': parts['クラシタ'], 'kg': 10.0, 'unit_price': 4000}], 'test')
+_lw = next(l['id'] for l in mdb.lots_in_house_for_count('2027-01') if l['supplier_id'] == _supw)
+def _all_form(period, override):
+    d = {'action': 'confirm', 'extra_count': '0'}
+    for l in mdb.lots_in_house_for_count(period):
+        d[f'lot_{l["id"]}'] = str(l['kg_now'])
+    d.update(override)
+    return d
+client.post('/meat/count/2027-01', data=_all_form('2027-01', {f'lot_{_lw}': '10'}))
+check(mdb.get_count('2027-01')['status'] == 'confirmed', '（前提）1月末の棚卸を確定')
+mdb.purchase_direct(_supw, '', '2027-02-01', [{'part_id': parts['クラシタ'], 'kg': 5.0, 'unit_price': 4000}], 'test')
+check(mdb.opening_period('2027-02-08') == '2027-01' and mdb.effective_bounds('2027-02-08') == ('2027-02-01', '2027-02-09'),
+      '前の週の棚卸が無ければ、月末の棚卸を前繰にして翌日から数える')
+check(mdb.period_label('2027-02-08') == '2/1(月)〜2/8(月)の週', f"期間の表示が月末の翌日から: {mdb.period_label('2027-02-08')}")
+check(mdb.purchases_in_period('2027-02-08').get(parts['クラシタ'], (0, 0))[0] >= 5.0, '月末の翌日（2/1）の仕入も入る')
+row = next((r for r in mdb.compute_closing('2027-02-08')['rows'] if r['part_name'] == 'クラシタ'), None)
+check(row and row['opening_kg'] >= 10 and mdb.compute_closing('2027-02-08')['status']['opening_available'],
+      '前繰は1月末の棚卸')
+check(mdb.opening_period('2027-02-15') == '2027-02-08' and mdb.effective_bounds('2027-02-15')[0] == '2027-02-09',
+      'その次の週はふつうの火曜〜月曜')
+h = client.get('/meat/closing/2027-02-08').get_data(as_text=True)
+check('2027年1月末の棚卸＝前繰' in h, '原価の画面に、月末の棚卸を前繰にしたことが出る')
+
 from database import engine
 engine.dispose()
 try:

@@ -19,7 +19,7 @@
 {% if not r.status.closed %}
 <div class="card p-3 mb-3" style="font-size:.88rem">
   <div class="fw-semibold mb-1">締めまでの手順</div>
-  <div>{{ '✅' if r.status.opening_available else '⬜' }} 前の{{ unit }}（{{ period_label(prev_period) }}）の棚卸＝前繰
+  <div>{{ '✅' if r.status.opening_available else '⬜' }} {% if opening_p != prev_period %}{{ period_label(opening_p) }}末の棚卸＝前繰<span class="text-muted">（前の週の棚卸が無いので、月末の翌日から数えます）</span>{% else %}前の{{ unit }}（{{ period_label(prev_period) }}）の棚卸＝前繰{% endif %}
     {% if not r.status.opening_available %}<span class="text-muted">…無い場合は前繰0で計算します（使い始め）</span>{% endif %}</div>
   <div>{{ '✅' if r.status.count_confirmed else '⬜' }} この{{ unit }}の棚卸を確定
     <a href="{{ url_for('meat.count', period=period) }}">棚卸へ</a></div>

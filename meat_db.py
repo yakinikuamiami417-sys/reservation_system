@@ -1137,11 +1137,38 @@ def recent_months(today, n=6):
     return out
 
 
+def opening_period(period):
+    """前繰に使う棚卸の期間。ふつうは前の期間。
+    週で、前の週の棚卸が無く、その週の中に月末の棚卸がある時は、月末の棚卸を前繰にする
+    （2026-11-11 社長：11/2の週は棚卸をしていないので、11/9の週は10月末の翌日 11/1 から数える）"""
+    prev = prev_period(period)
+    if not is_week(period) or _count_totals(prev) is not None:
+        return prev
+    start = date.fromisoformat(period_bounds(period)[0])
+    if start.day > 7:
+        return prev   # 前の週の中に月末が無い
+    month = (start.replace(day=1) - timedelta(days=1)).strftime('%Y-%m')   # 前の週の中で終わった月
+    return month if _count_totals(month) is not None else prev
+
+
+def effective_bounds(period):
+    """原価を出す期間 (始まり, 終わりの翌日)。前繰が月末の棚卸の時は、その翌日から（例：11/1〜11/9）"""
+    start, end = period_bounds(period)
+    if is_week(period):
+        op = opening_period(period)
+        if not is_week(op):
+            start = period_bounds(op)[1]
+    return start, end
+
+
+_WEEKDAYS = '月火水木金土日'
+
+
 def period_label(period):
     if is_week(period):
-        s, e = period_bounds(period)
-        f = lambda d: f'{d.month}/{d.day}'
-        return f'{f(date.fromisoformat(s))}(火)〜{f(date.fromisoformat(period))}(月)の週'
+        s, _ = effective_bounds(period)
+        sd, md = date.fromisoformat(s), date.fromisoformat(period)
+        return f'{sd.month}/{sd.day}({_WEEKDAYS[sd.weekday()]})〜{md.month}/{md.day}(月)の週'
     y, m = period.split('-')
     return f'{y}年{int(m)}月'
 
@@ -1285,7 +1312,7 @@ def _count_totals(period, confirmed_only=True):
 
 def purchases_in_period(period):
     """今期仕入：伝票日付が当月のロットの 金額（取引値×単価）と 実重量 を部位ごとに合計"""
-    start, end = period_bounds(period)
+    start, end = effective_bounds(period)
     with engine.begin() as con:
         rows = con.execute(text("""
             SELECT l.part_id, COALESCE(SUM(l.promised_amount), 0) AS amount, COALESCE(SUM(l.label_kg), 0) AS kg
@@ -1367,7 +1394,7 @@ def compute_closing(period):
 
     status = {
         'count_confirmed': _count_totals(period) is not None,
-        'opening_available': _count_totals(prev_period(period)) is not None,
+        'opening_available': _count_totals(opening_period(period)) is not None,
         'has_sales': bool(sales),
         'closed': bool(saved) and all(r['confirmed_at'] for r in saved),
     }
@@ -1375,7 +1402,7 @@ def compute_closing(period):
     if status['closed']:
         rows = saved
     else:
-        opening = _count_totals(prev_period(period)) or {}
+        opening = _count_totals(opening_period(period)) or {}
         closing = _count_totals(period, confirmed_only=False) or {}
         purchases = purchases_in_period(period)
         rows = []
