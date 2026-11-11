@@ -70,12 +70,14 @@
         {% if p.is_low %}<i class="bi bi-exclamation-triangle-fill text-danger"></i>{% endif %}
         {{ p.name }}
         {% if p.expiring %}<span class="badge bg-danger ms-1">期限近い {{ p.expiring|length }}</span>{% endif %}
+        {% if p.carry_kg > 0 %}<div class="muted-small fw-normal num">前繰 {{ '%.1f'|format(p.carry_kg) }}kg ＋ 今月の仕入 {{ '%.1f'|format(p.month_kg) }}kg</div>{% endif %}
       </span>
       <span class="num fs-5 {{ 'text-danger' if p.is_low }}">{{ '%.1f'|format(p.total_kg) }}kg
         <i class="bi bi-chevron-down fs-6 text-muted"></i></span>
     </a>
     <div class="collapse {{ 'show' if p.is_low or p.expiring }}" id="part{{ p.id }}">
       <div class="px-3 pb-2 muted-small">
+        {% if not p.count_weekly %}使った分はまだ引かれていません（月末の棚卸で出ます）<br>{% endif %}
         原料 {{ '%.1f'|format(p.raw_kg) }}kg ／ 商品化 {{ '%.1f'|format(p.product_kg) }}kg
         ／ 下限 {{ p.min_stock_kg|round(1) }}kg ／ ¥{{ '{:,}'.format(p.value) }}
       </div>
@@ -83,12 +85,13 @@
         {% for lot in p.lots %}
         <a href="{{ url_for('meat.lot_detail', lot_id=lot.id) }}" class="list-group-item list-group-item-action">
           <div class="d-flex justify-content-between">
-            <span><span class="badge badge-{{ lot.status }}">{{ lot.status_label }}</span>
+            <span>{% if lot.carryover %}<span class="badge text-bg-secondary">前繰</span>{% else %}<span class="badge text-bg-success">仕入{% if lot.bought_md %} {{ lot.bought_md }}{% endif %}</span>{% endif %}
+              <span class="badge badge-{{ lot.status }}">{{ lot.status_label }}</span>
               {{ lot.sub_part_name or lot.label_item_name or '' }}</span>
             <span class="num">{{ '%.2f'|format(lot.kg_now) }}kg{% if lot.status == 'processed' %}<span class="muted-small">（開封済み・前回の計量）</span>{% endif %}</span>
           </div>
           <div class="muted-small d-flex justify-content-between">
-            <span>{{ lot.supplier_name }}{% if lot.brand %}・{{ lot.brand }}{% endif %}</span>
+            <span>{% if lot.carryover %}{{ lot.carry_label }}（{{ lot.bought_md }}仕入）・{% endif %}{{ lot.supplier_name }}{% if lot.brand %}・{{ lot.brand }}{% endif %}</span>
             <span>{% if lot.days_left is not none %}
               <span class="{{ 'text-danger fw-bold' if lot.days_left <= 3 }}">賞味 {{ lot.best_before[5:]|replace('-', '/') }}
                 （{{ 'あと%d日'|format(lot.days_left) if lot.days_left >= 0 else '%d日超過'|format(-lot.days_left) }}）</span>

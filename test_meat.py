@@ -444,6 +444,21 @@ r = client.post('/meat/purchase', data={'supplier_name': 'マルイチ', 'row_co
     'r0_part_id': str(parts['サーロイン']) if 'サーロイン' in parts else '0', 'r0_kg': '1', 'r0_unit_price': '7500'})
 check('部位を選んでください' in r.get_data(as_text=True), '目利きの部位は仕入画面から入れられない')
 
+# ---- 在庫の画面：前繰（今月より前の伝票）と今月の仕入を分けて見せる ----
+from datetime import date as _d, timedelta as _td
+_ms = _d.fromisoformat(mdb._now()[:10]).replace(day=1)
+_prev = (_ms - _td(days=3)).isoformat()
+_sup = mdb.get_or_create_supplier('テスト内臓')
+mdb.purchase_direct(_sup, '', _prev, [{'part_id': offal['ギアラ']['id'], 'kg': 6.2, 'unit_price': 1600}], 'test')
+mdb.purchase_direct(_sup, '', _ms.isoformat(), [{'part_id': offal['ギアラ']['id'], 'kg': 3.7, 'unit_price': 1600}], 'test')
+gp = next(p for p in mdb.stock_summary()['parts'] if p['name'] == 'ギアラ')
+check(abs(gp['carry_kg'] - 6.2) < 1e-9 and abs(gp['month_kg'] - 3.7) < 1e-9, '前繰と今月の仕入を分けて合計する')
+check(gp['lots'][0]['carryover'] and not gp['lots'][-1]['carryover'], '前繰の塊を先に並べる')
+h = client.get('/meat/').get_data(as_text=True)
+check('前繰 6.2kg ＋ 今月の仕入 3.7kg' in h and f'{(_ms - _td(days=1)).month}月末の残り' in h,
+      '在庫の画面に前繰と今月の仕入が出る')
+check(f'仕入 {_ms.month}/1' in h, '今月の塊には仕入日が出る')
+
 from database import engine
 engine.dispose()
 try:

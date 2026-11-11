@@ -858,12 +858,22 @@ def list_lots(statuses):
 def stock_summary(expiry_warn_days=3):
     """在庫一覧：店内（納品済み＋商品化済み）を部位ごとにまとめる。下限割れ・期限近いものを先頭に"""
     lots = list_lots(IN_HOUSE)
-    parts = {p['id']: dict(p, lots=[], raw_kg=0.0, product_kg=0.0, total_kg=0.0, value=0)
+    parts = {p['id']: dict(p, lots=[], raw_kg=0.0, product_kg=0.0, total_kg=0.0, value=0,
+                           carry_kg=0.0, month_kg=0.0)
              for p in list_parts()}
+    # 前繰＝伝票の日付が今月より前の塊（月をまたいで残った塊は、前月末の棚卸で量った重さになっている）。
+    # 2026-11-11 社長：前繰と今月の仕入を分けて見せる。使った分は月末の棚卸で初めて分かる
+    month_start = date.fromisoformat(_now()[:10]).replace(day=1)
+    carry_label = f'{(month_start - timedelta(days=1)).month}月末の残り'
     for lot in lots:
         p = parts.get(lot['part_id'])
         if p is None:
             continue
+        bought = (lot.get('slip_date') or lot.get('promised_on') or '')[:10]
+        lot['carryover'] = bool(bought) and bought < month_start.isoformat()
+        lot['bought_md'] = f'{int(bought[5:7])}/{int(bought[8:10])}' if len(bought) == 10 else ''
+        lot['carry_label'] = carry_label
+        p['carry_kg' if lot['carryover'] else 'month_kg'] += lot['kg_now']
         p['lots'].append(lot)
         if lot['status'] == 'received':
             p['raw_kg'] += lot['kg_now']
@@ -886,6 +896,7 @@ def stock_summary(expiry_warn_days=3):
             sg['members'].append(p)
             sg['sort_order'] = min(sg['sort_order'], p['sort_order'])
         p['expiring'] = [l for l in p['lots'] if l['days_left'] is not None and l['days_left'] <= expiry_warn_days]
+        p['lots'].sort(key=lambda l: not l['carryover'])   # 前繰を先に（その中は元の並び）
         rows.append(p)
     for p in rows:
         p['group_info'] = shared.get(p['group'])
