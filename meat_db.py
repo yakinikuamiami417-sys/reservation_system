@@ -555,6 +555,49 @@ def last_unit_price(part_id):
         """), {f'm{i}': m for i, m in enumerate(members)}).scalar()
 
 
+# 目利き（業者預け）→ 納品 の2段階で入れるのは、フードの正肉6部位だけ（2026-11-11 社長）。
+# それ以外（内臓・タン・ハラミ・トリ・ブタなど）は「仕入」画面で、その日に仕入＝納品として1回で入れる
+MEKIKI_PARTS = ('トモバラ', 'クラシタ', 'ウデ', 'モモ', 'ヒレ', 'サーロイン')
+
+
+def direct_parts():
+    """仕入画面で選ぶ部位（目利きの6部位と部位未分類を除く）"""
+    return [p for p in entry_parts() if p['name'] not in MEKIKI_PARTS]
+
+
+def direct_default_prices():
+    """仕入画面の単価の初期値 {part_id: 円}＝その部位の前回の仕入単価、無ければ価格表。
+    同じ分類の他の部位の単価は使わない（ハチノス1,000円にセンレバハツ3,000円が入らないように）"""
+    with engine.begin() as con:
+        own = {r.part_id: r.price for r in con.execute(text("""
+            SELECT l.part_id, l.promised_unit_price AS price FROM meat_lots l
+            JOIN (SELECT part_id, MAX(id) AS id FROM meat_lots
+                  WHERE promised_unit_price IS NOT NULL AND status != 'cancelled' GROUP BY part_id) x ON x.id = l.id
+        """))}
+    base = price_db.part_prices((date.fromisoformat(_now()[:10]) + timedelta(days=1)).isoformat())
+    out = {}
+    for p in direct_parts():
+        price = own.get(p['id']) or base.get(p['id'])
+        if price:
+            out[p['id']] = price
+    return out
+
+
+def purchase_direct(supplier_id, slip_no, slip_date, lines, staff, memo=''):
+    """その日に仕入＝納品：塊を作ってすぐ納品済みにする（1枚の伝票にまとめる）。
+    lines: [{'part_id', 'kg', 'unit_price', 'best_before'}]。戻り値 (件数, 合計金額)"""
+    lot_ids = []
+    for ln in lines:
+        lot_ids.append(create_held_lot({
+            'part_id': ln['part_id'], 'supplier_id': supplier_id,
+            'label_kg': ln['kg'], 'trade_kg': ln['kg'], 'unit_price': ln['unit_price'],
+            'best_before': ln.get('best_before') or None, 'promised_on': slip_date, 'memo': memo or None,
+        }, staff))
+    total = sum(trade_amount(_num(ln['kg']), _num(ln['unit_price'])) or 0 for ln in lines)
+    _, lines_total = receive_lots(supplier_id, slip_no, slip_date, total, lot_ids, staff)
+    return len(lot_ids), lines_total
+
+
 def base_part_prices():
     """価格表の今の値段 {part_id: 円}。部位に無ければ同じ集計分類の値段（部位未分類 → ウデ）"""
     tomorrow = date.fromisoformat(_now()[:10]) + timedelta(days=1)

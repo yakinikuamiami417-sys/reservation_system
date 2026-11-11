@@ -51,6 +51,7 @@
 {% set _tab = request.args.get('tab', 'house') %}
 <nav class="meat-tabs">
   <a href="{{ url_for('meat.index', tab='house') }}" class="{{ 'on' if _ep in ('meat.index',) and _tab != 'held' or _ep == 'meat.lot_detail' }}"><i class="bi bi-box-seam"></i>在庫</a>
+  <a href="{{ url_for('meat.purchase') }}" class="{{ 'on' if _ep == 'meat.purchase' }}"><i class="bi bi-cart-plus"></i>仕入</a>
   <a href="{{ url_for('meat.index', tab='held') }}" class="{{ 'on' if (_ep == 'meat.index' and _tab == 'held') or _ep == 'meat.new_lots' }}"><i class="bi bi-eye"></i>目利き</a>
   <a href="{{ url_for('meat.receive') }}" class="{{ 'on' if _ep == 'meat.receive' }}"><i class="bi bi-truck"></i>納品</a>
   <a href="{{ url_for('meat.count', period=meat_week) }}" class="{{ 'on' if _ep == 'meat.count' }}"><i class="bi bi-clipboard-check"></i>棚卸</a>
@@ -71,6 +72,7 @@
 
 {% block bottom %}
 <nav class="bottom-bar">
+  <a href="{{ url_for('meat.purchase') }}" class="btn btn-success"><i class="bi bi-cart-plus"></i> 仕入</a>
   <a href="{{ url_for('meat.new_lots') }}" class="btn btn-warning"><i class="bi bi-camera"></i> 目利き</a>
   <a href="{{ url_for('meat.receive') }}" class="btn btn-primary"><i class="bi bi-truck"></i> 納品</a>
   <a href="{{ url_for('meat.count', period=meat_week) }}" class="btn btn-outline-dark">

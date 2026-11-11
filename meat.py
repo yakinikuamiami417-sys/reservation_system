@@ -266,6 +266,60 @@ def api_read_label():
 # ============================================================
 # ② 納品・伝票
 # ============================================================
+@bp.route('/purchase', methods=['GET', 'POST'])
+@admin_required
+def purchase():
+    """仕入（その日に納品）：目利きを通さない部位を、伝票1枚分まとめて入れる"""
+    parts = mdb.direct_parts()
+    part_ids = {p['id'] for p in parts}
+    if request.method == 'POST':
+        f = request.form
+        supplier_name = f.get('supplier_name', '').strip()
+        slip_date = f.get('slip_date') or _today().isoformat()
+        lines, problems = [], []
+        for i in range(int(f.get('row_count', 0) or 0)):
+            g = lambda k: f.get(f'r{i}_{k}', '').strip()
+            if not g('part_id') and not g('kg'):
+                continue
+            kg, price = _float(g('kg')), _float(g('unit_price'))
+            if not g('part_id') or int(g('part_id')) not in part_ids:
+                problems.append(f'{i + 1}行目：部位を選んでください')
+            elif not kg or kg <= 0:
+                problems.append(f'{i + 1}行目：数量を入れてください')
+            elif price is None or price < 0:
+                problems.append(f'{i + 1}行目：単価を入れてください')
+            else:
+                lines.append({'part_id': int(g('part_id')), 'kg': kg, 'unit_price': int(round(price)),
+                              'best_before': g('best_before')})
+        if not supplier_name:
+            problems.insert(0, '業者を選んでください')
+        if not lines and not problems:
+            problems.append('仕入れた品を1行以上入れてください')
+        if problems:
+            for msg in problems:
+                flash(msg, 'warning')
+            keys = ('part_id', 'kg', 'unit_price', 'best_before')
+            form_rows = [{k: f.get(f'r{i}_{k}', '') for k in keys}
+                         for i in range(int(f.get('row_count', 0) or 0))]
+            return render_template('meat/purchase.html', parts=parts, suppliers=mdb.list_suppliers(),
+                                   prices=mdb.direct_default_prices(), pack_parts=mdb.PACK_PARTS,
+                                   today=_today(), form=f, form_rows=form_rows)
+        supplier_id = mdb.get_or_create_supplier(supplier_name)
+        count, total = mdb.purchase_direct(supplier_id, f.get('slip_no', '').strip(), slip_date, lines,
+                                           staff_name())
+        slip_total = int(_float(f.get('total_amount')) or 0)
+        if slip_total and slip_total != total:
+            flash(f'{count} 件を仕入・納品しました。ただし伝票合計 {slip_total:,}円 と、入れた金額の合計 {total:,}円 が'
+                  f' {slip_total - total:+,}円 違います。数量・単価を確認してください（塊の画面で直せます）', 'warning')
+        else:
+            flash(f'{supplier_name}の {count} 件を仕入・納品しました（合計 {total:,}円）', 'success')
+        if f.get('next_action') == 'continue':
+            return redirect(url_for('meat.purchase'))
+        return redirect(url_for('meat.index'))
+    return render_template('meat/purchase.html', parts=parts, suppliers=mdb.list_suppliers(),
+                           prices=mdb.direct_default_prices(), pack_parts=mdb.PACK_PARTS, today=_today(), form={})
+
+
 @bp.route('/receive', methods=['GET', 'POST'])
 @admin_required
 def receive():

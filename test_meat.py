@@ -415,6 +415,35 @@ vp = mdb.valuation_prices('2027-08')
 check(vp[offal['ハチノス']['id']] == 1000 and vp[offal['赤センマイ']['id']] == 2600,
       '仕入の無い内臓は同じ分類の最後の単価ではなく価格表の値段で評価する')
 
+# ---- 仕入（その日に納品）：目利きを通さない部位を伝票1枚分まとめて入れる ----
+dp = {p['name'] for p in mdb.direct_parts()}
+check('ハチノス' in dp and 'タン（和牛）' in dp and not (dp & set(mdb.MEKIKI_PARTS)), '仕入画面はフードの6部位を除く')
+check(mdb.direct_default_prices()[offal['ハチノス']['id']] == 1000, '単価の初期値はその部位の値段（センレバハツの単価を使わない）')
+h = client.get('/meat/purchase').get_data(as_text=True)
+check('仕入（その日に納品）' in h and 'ハチノス' in h and '>サーロイン<' not in h, '仕入画面が開き、目利きの部位は出ない')
+r = client.post('/meat/purchase', data={
+    'supplier_name': 'マルイチ', 'slip_date': '2027-09-10', 'slip_no': 'M-1', 'row_count': '3',
+    'r0_part_id': str(offal['ハチノス']['id']), 'r0_kg': '1.0', 'r0_unit_price': '1000',
+    'r1_part_id': str(offal['大腸']['id']), 'r1_kg': '0.8', 'r1_unit_price': '1200',
+    'r2_part_id': '', 'r2_kg': '', 'r2_unit_price': ''}, follow_redirects=True)
+check('2 件を仕入・納品しました（合計 1,960円）' in r.get_data(as_text=True), '伝票1枚分を1回で仕入・納品できる')
+buy = mdb.purchases_in_period('2027-09')
+check(buy.get(offal['ハチノス']['id']) == (1.0, 1000) and buy.get(offal['大腸']['id']) == (0.8, 960), '仕入金額が原価の仕入に入る')
+lots = [l for l in mdb.list_lots(('received',)) if l['part_id'] == offal['大腸']['id']]
+check(lots and lots[-1]['slip_no'] == 'M-1' and lots[-1]['supplier_name'] == 'マルイチ', '納品済み・伝票番号・業者が残る')
+r = client.post('/meat/purchase', data={
+    'supplier_name': 'マルイチ', 'slip_date': '2027-09-11', 'row_count': '1',
+    'r0_part_id': str(offal['ギアラ']['id']), 'r0_kg': '2', 'r0_unit_price': ''})
+check('1行目：単価を入れてください' in r.get_data(as_text=True), '単価が空なら知らせる')
+check(mdb.purchases_in_period('2027-09').get(offal['ギアラ']['id']) is None, '単価が空の行があれば何も登録しない')
+r = client.post('/meat/purchase', data={
+    'supplier_name': 'マルイチ', 'slip_date': '2027-09-12', 'row_count': '1', 'total_amount': '5000',
+    'r0_part_id': str(offal['赤センマイ']['id']), 'r0_kg': '1.5', 'r0_unit_price': '2600'}, follow_redirects=True)
+check('+1,100円 違います' in r.get_data(as_text=True), '伝票合計と違えば知らせる')
+r = client.post('/meat/purchase', data={'supplier_name': 'マルイチ', 'row_count': '1',
+    'r0_part_id': str(parts['サーロイン']) if 'サーロイン' in parts else '0', 'r0_kg': '1', 'r0_unit_price': '7500'})
+check('部位を選んでください' in r.get_data(as_text=True), '目利きの部位は仕入画面から入れられない')
+
 from database import engine
 engine.dispose()
 try:
