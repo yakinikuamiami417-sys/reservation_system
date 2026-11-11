@@ -112,18 +112,7 @@ if (typeof document !== 'undefined') {
     if (c && e.target.name === 'lot_' + c.dataset.id && e.target.value.trim() && c.dataset.unopened === '0') setOk(c.dataset.id, true);
   });
 
-  window.allPresent = function () {
-    let n = 0;
-    for (const c of cards) {
-      if (c.dataset.unopened !== '1' || missOf(c).checked || missOf(c).disabled) continue;
-      if (!okIds.has(c.dataset.id)) { okIds.add(c.dataset.id); n++; }
-    }
-    saveOk(); refresh();
-    const left = cards.filter(c => c.dataset.unopened === '0' && !okIds.has(c.dataset.id) && !missOf(c).checked).length;
-    alert(`未開封 ${n} 本を「目視」にしました。` +
-          (left ? `\n開封済み・使い切りの ${left} 本は、量って重さを入れてください。` : '') +
-          '\n無かった箱だけ「無い」に✓を付けてください。');
-  };
+  // 「未開封を全部」のまとめて✓は外した（2026-11-11 社長：箱が多く、どこまで確かめたか分からなくなるので1つずつ）
   refresh();
 
   // ---------------- バーコード ----------------

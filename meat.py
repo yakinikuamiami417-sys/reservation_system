@@ -502,7 +502,7 @@ def _count_lots(period):
 
 @bp.route('/count/<period>/print')
 def count_print(period):
-    """冷蔵庫の前で✓を付ける紙のチェック表（A4）。あとで画面に「全部目視」→違う物だけ直す"""
+    """冷蔵庫の前で✓を付ける紙のチェック表（A4）。あとで画面に紙のとおり1つずつ✓を付ける"""
     if not _valid_period(period):
         abort(404)
     parts, week, weekly_ids, lots = _count_lots(period)

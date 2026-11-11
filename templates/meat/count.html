@@ -50,12 +50,11 @@
   </div>
   <div class="d-flex gap-1 flex-wrap">
     {% if not locked %}
-    <button type="button" class="btn btn-success btn-sm fw-bold flex-fill" onclick="allPresent()"><i class="bi bi-check2-all"></i> 未開封を全部「目視」</button>
     <button type="button" class="btn btn-dark btn-sm fw-bold flex-fill" onclick="openScanner()"><i class="bi bi-upc-scan"></i> バーコードで確認<span class="badge bg-warning text-dark ms-1">試し</span></button>
     {% endif %}
     <a href="{{ url_for('meat.count_print', period=period) }}" target="_blank" class="btn btn-outline-dark btn-sm flex-fill"><i class="bi bi-printer"></i> 印刷用チェック表</a>
   </div>
-  <div class="muted-small mt-1">「目視」＝冷蔵庫で箱を目で確かめた印です（保存はされず、この端末だけに残ります）。数えるのは重さの欄です。「全部目視」は、箱を番号で確かめてから押し、無かった箱だけ「無い」に。</div>
+  <div class="muted-small mt-1">「目視」＝冷蔵庫で箱を目で確かめた印です（保存はされず、この端末だけに残ります）。数えるのは重さの欄です。箱を1つずつ番号で確かめて「目視」に✓、無かった箱は「無い」に✓。上の「確認 ○/○」で、どこまで確かめたか分かります。</div>
 </div>
 
 <form method="post">

@@ -190,8 +190,8 @@ for path in ['/meat/', '/meat/?tab=held', f'/meat/lot/{a}', f'/meat/lot/{c}', '/
 check(client.get('/meat/count/2026-13').status_code == 404, 'あり得ない期間は404')
 page = client.get('/meat/count/2026-11-09').get_data(as_text=True)
 check('ホルモン は月末' not in page and '月末の棚卸だけで量ります' in page, '週次の棚卸は月末だけの部位を案内')
-check('未開封を全部「目視」' in page and '> 目視</label>' in page and 'ok-check' in page and f'data-id="{a}"' in page and 'meat_count_check.js' in page,
-      '棚卸に目視チェック（目視・全部目視・バーコード）が出る')
+check('未開封を全部' not in page and '> 目視</label>' in page and 'ok-check' in page and f'data-id="{a}"' in page and 'meat_count_check.js' in page,
+      '棚卸に目視チェック（1つずつの目視・バーコード）が出て、まとめて✓のボタンは無い')
 res = client.get('/meat/count/2026-11-09/print')
 pr = res.get_data(as_text=True)
 check(res.status_code == 200 and '棚卸チェック表' in pr and f'#{a}' in pr and '開封・量る' in pr, '印刷用チェック表が出る')
